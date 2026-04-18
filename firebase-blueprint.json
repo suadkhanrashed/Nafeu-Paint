@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the system (Admin, Manager, Worker, Shop Owner)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "admin", "manager", "worker", "shop_owner"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "suspended"] },
+        "shopCode": { "type": "string", "description": "Only for shop_owner role" },
+        "assignedAreas": { 
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Areas assigned to the worker"
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "status"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "Log of user actions",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "action", "timestamp"]
+    },
+    "Shop": {
+      "title": "Shop",
+      "description": "A retail shop that places orders",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "Unique shop code" },
+        "name": { "type": "string" },
+        "area": { "type": "string" },
+        "ownerEmail": { "type": "string", "format": "email" },
+        "totalDue": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "name", "area"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A financial transaction for a shop",
+      "type": "object",
+      "properties": {
+        "shopCode": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["payment", "due_addition"] },
+        "workerUid": { "type": "string" },
+        "workerName": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "note": { "type": "string" }
+      },
+      "required": ["shopCode", "amount", "type", "workerUid", "date"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A product available for order",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sizes": { 
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "baseRate": { "type": "number" }
+      },
+      "required": ["name", "sizes"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "An order placed by a worker for a shop",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "shopCode": { "type": "string" },
+        "shopName": { "type": "string" },
+        "workerUid": { "type": "string" },
+        "workerName": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productName": { "type": "string" },
+              "size": { "type": "string" },
+              "quantity": { "type": "number" },
+              "rate": { "type": "number" },
+              "total": { "type": "number" }
+            }
+          }
+        },
+        "grandTotal": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "in_transport", "delivered", "cancelled", "received"] },
+        "paymentStatus": { "type": "string", "enum": ["unpaid", "partially_paid", "paid"] },
+        "amountPaid": { "type": "number" },
+        "dueAmount": { "type": "number" },
+        "receivedByWorker": { "type": "boolean" },
+        "modificationHistory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "uid": { "type": "string" },
+              "userName": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "action": { "type": "string" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shopCode", "workerUid", "items", "grandTotal", "status"]
+    },
+    "AreaRequest": {
+      "title": "Area Request",
+      "description": "A request from a worker for a new area assignment",
+      "type": "object",
+      "properties": {
+        "workerUid": { "type": "string" },
+        "workerName": { "type": "string" },
+        "requestedArea": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workerUid", "requestedArea", "status", "createdAt"]
+    },
+    "Branding": {
+      "title": "Branding",
+      "description": "Application branding settings",
+      "type": "object",
+      "properties": {
+        "logoUrl": { "type": "string", "description": "URL or Base64 of the main logo" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "User", "description": "User profiles" },
+    "/shops/{code}": { "schema": "Shop", "description": "Registered shops" },
+    "/products/{id}": { "schema": "Product", "description": "Available products" },
+    "/orders/{id}": { "schema": "Order", "description": "Order records" },
+    "/transactions/{id}": { "schema": "Transaction", "description": "Shop transactions" },
+    "/activity/{id}": { "schema": "Activity", "description": "User activity logs" },
+    "/area_requests/{id}": { "schema": "AreaRequest", "description": "Worker area requests" },
+    "/settings/branding": { "schema": "Branding", "description": "Global branding configuration" }
+  }
+}

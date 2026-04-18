@@ -1,0 +1,304 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: uid
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - displayName: string (optional)
+    //   - role: string (required, ['admin', 'manager', 'worker', 'shop_owner'])
+    //   - status: string (required, ['pending', 'approved', 'suspended'])
+    //   - shopCode: string (optional, for shop_owner)
+    //   - createdAt: string (required, ISO 8601)
+    //
+    // Collection: shops
+    // Document ID: code
+    // Fields:
+    //   - code: string (required)
+    //   - name: string (required)
+    //   - area: string (required)
+    //   - ownerEmail: string (optional)
+    //   - totalDue: number (optional)
+    //   - createdAt: string (required, ISO 8601)
+    //
+    // Collection: products
+    // Document ID: id
+    // Fields:
+    //   - name: string (required)
+    //   - sizes: list (required)
+    //   - baseRate: number (optional)
+    //
+    // Collection: orders
+    // Document ID: id
+    // Fields:
+    //   - shopCode: string (required)
+    //   - shopName: string (required)
+    //   - workerUid: string (required)
+    //   - workerName: string (required)
+    //   - items: list (required)
+    //   - grandTotal: number (required)
+    //   - status: string (required, ['pending', 'in_transport', 'delivered', 'cancelled', 'received'])
+    //   - paymentStatus: string (required, ['unpaid', 'partially_paid', 'paid'])
+    //   - amountPaid: number (required)
+    //   - dueAmount: number (required)
+    //   - receivedByWorker: bool (optional)
+    //   - createdAt: string (required, ISO 8601)
+    //   - updatedAt: string (required, ISO 8601)
+    //
+    // Collection: transactions
+    // Document ID: id
+    // Fields:
+    //   - shopCode: string (required)
+    //   - amount: number (required)
+    //   - type: string (required, ['payment', 'due_addition'])
+    //   - workerUid: string (required)
+    //   - workerName: string (required)
+    //   - date: string (required, ISO 8601)
+    //   - note: string (optional)
+    //
+    // Collection: requests
+    // Document ID: id
+    // Fields:
+    //   - type: string (required, ['product_modification'])
+    //   - productId: string (required)
+    //   - productName: string (required)
+    //   - workerUid: string (required)
+    //   - workerName: string (required)
+    //   - status: string (required, ['pending', 'approved', 'rejected'])
+    //   - createdAt: string (required, ISO 8601)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isOwnerRole() {
+      return isAuthenticated() && (
+        request.auth.token.email == "suadkhan.s1.qc@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'owner')
+      );
+    }
+
+    function isAdmin() {
+      return isOwnerRole() || (isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin' ||
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'owner'));
+    }
+
+    function isManager() {
+      return isAdmin() || (isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'manager'
+      ));
+    }
+
+    function isWorker() {
+      return isManager() || (isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'worker'
+      ));
+    }
+
+    function hasPermission(perm) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'owner' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('customPermissions', []).hasAny([perm]) ||
+        (
+          exists(/databases/$(database)/documents/role_permissions/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', ''))) &&
+          get(/databases/$(database)/documents/role_permissions/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', ''))).data.get('permissions', []).hasAny([perm])
+        )
+      );
+    }
+
+    function isShopOwner() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'shop_owner';
+    }
+
+    function isApproved() {
+      return isOwnerRole() || (isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             (
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'owner' ||
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin' ||
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', '') == 'approved'
+             ));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'status', 'createdAt']) &&
+             data.role in ['owner', 'admin', 'manager', 'worker', 'shop_owner', 'customer'] &&
+             data.status in ['pending', 'approved', 'suspended'] &&
+             isValidDateString(data.createdAt) &&
+             (!('phoneNumber' in data) || data.phoneNumber is string) &&
+             (!('photoURL' in data) || data.photoURL is string) &&
+             (!('assignedAreas' in data) || data.assignedAreas is list);
+    }
+
+    function isValidAreaRequest(data) {
+      return data.keys().hasAll(['workerUid', 'workerName', 'requestedArea', 'status', 'createdAt']) &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['shopCode', 'shopName', 'workerUid', 'workerName', 'items', 'grandTotal', 'status', 'createdAt', 'updatedAt']) &&
+             data.status in ['pending', 'in_transport', 'delivered', 'cancelled', 'received'] &&
+             data.items is list &&
+             data.grandTotal is number &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.updatedAt);
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['shopCode', 'amount', 'type', 'workerUid', 'workerName', 'date']) &&
+             data.type in ['payment', 'due_addition'] &&
+             data.amount is number &&
+             isValidDateString(data.date);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Allow reading users for directory/contacts if approved.
+      // ALWAYS allow users to read their own profile (crucial for initial load and settings).
+      allow get: if isOwner(userId);
+      allow list: if isAuthenticated() && isApproved();
+      
+      // Only owner and admin can create users.
+      // Exception: users can create their own doc if it's not an owner.
+      allow create: if isAuthenticated() && (
+        isOwnerRole() || isAdmin() || hasPermission('MANAGE_USERS') ||
+        (request.resource.data.role == 'owner' && request.auth.token.email == "suadkhan.s1.qc@gmail.com") ||
+        (request.resource.data.role != 'owner' && isValidUser(request.resource.data) && request.auth.uid == userId)
+      );
+      
+      // Update rules:
+      // 1. Owner and Admin can update anyone (except Admin can't change Owner's role).
+      allow update: if isAuthenticated() && (
+        isOwnerRole() || 
+        (isAdmin() && (resource.data.role != 'owner' || request.resource.data.role == 'owner')) ||
+        (hasPermission('MANAGE_USERS') && resource.data.role != 'owner') ||
+        (isOwner(userId) && (
+          (resource.data.status != 'suspended' && request.resource.data.role == resource.data.role && 
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phoneNumber', 'photoURL', 'updatedAt'])) ||
+          (resource.data.status == 'suspended' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reAccessRequested']))
+        ))
+      );
+      
+      // No one can delete owner. Owner and Admin can delete others.
+      allow delete: if isAuthenticated() && (isOwnerRole() || isAdmin() || hasPermission('MANAGE_USERS')) && resource.data.role != 'owner';
+    }
+
+    match /activity/{activityId} {
+      allow read: if isOwnerRole() || isAdmin() || hasPermission('VIEW_ACTIVITY_LOG');
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (isApproved() || isOwnerRole()) && (
+        isAdmin() || isManager() || 
+        (isShopOwner() && resource.data.to == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode) ||
+        (resource.data.to == request.auth.uid)
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && isApproved() && (
+        isAdmin() || isManager() || 
+        (isShopOwner() && resource.data.to == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode)
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAdmin() || isManager();
+    }
+
+    match /shops/{shopCode} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isApproved() && (isAdmin() || isManager() || isWorker());
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isApproved() && (isAdmin() || isManager() || isWorker());
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isApproved() && (isAdmin() || isManager() || isWorker());
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && isApproved() && 
+                  (isAdmin() || isManager() || hasPermission('VIEW_ORDERS') || hasPermission('VIEW_REPORTS') || resource.data.workerUid == request.auth.uid || 
+                   (isShopOwner() && resource.data.shopCode == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('shopCode', '')));
+      
+      allow create: if isAuthenticated() && isApproved() && isWorker() && isValidOrder(request.resource.data);
+      
+      allow update: if isAuthenticated() && isApproved() && 
+                    (isAdmin() || isManager() || (isWorker() && resource.data.workerUid == request.auth.uid));
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && isApproved() && 
+                  (isAdmin() || isManager() || isWorker() || 
+                   (isShopOwner() && resource.data.shopCode == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode));
+      allow create: if isAuthenticated() && isApproved() && isWorker() && isValidTransaction(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /order_requests/{requestId} {
+      allow read: if isAuthenticated() && isApproved() && 
+                  (isAdmin() || isManager() || isWorker() || hasPermission('VIEW_ORDERS') ||
+                   (isShopOwner() && resource.data.shopCode == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('shopCode', '')));
+      allow create: if isAuthenticated() && isApproved() && isShopOwner();
+      allow update: if isAuthenticated() && isApproved() && (isAdmin() || isManager() || isWorker());
+      allow delete: if isAuthenticated() && isApproved() && (isAdmin() || isManager());
+    }
+
+    match /requests/{requestId} {
+      allow read: if isAuthenticated() && isApproved() && (isAdmin() || isManager());
+      allow create: if isAuthenticated() && isApproved() && isWorker();
+      allow update, delete: if isAuthenticated() && isApproved() && (isAdmin() || isManager());
+    }
+
+    match /area_requests/{requestId} {
+      allow read: if isAuthenticated() && isApproved() && (isAdmin() || isManager() || resource.data.workerUid == request.auth.uid);
+      allow create: if isAuthenticated() && isApproved() && isWorker() && isValidAreaRequest(request.resource.data);
+      allow update: if isAuthenticated() && isApproved() && (isAdmin() || isManager());
+      allow delete: if isAuthenticated() && isApproved() && (isAdmin() || isManager());
+    }
+
+    match /role_permissions/{role} {
+      allow read: if true;
+      allow write: if isOwnerRole() || isAdmin() || hasPermission('MANAGE_PERMISSIONS');
+    }
+  }
+}
