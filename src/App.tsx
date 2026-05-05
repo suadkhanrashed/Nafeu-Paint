@@ -6,7 +6,8 @@ import {
   Navigate, 
   useNavigate,
   useLocation,
-  Link
+  Link,
+  useSearchParams
 } from 'react-router-dom';
 import { 
   onAuthStateChanged, 
@@ -44,7 +45,7 @@ import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
-import { UserProfile, UserRole, UserStatus, Shop, Order, Transaction, Activity, Permission, RolePermissions, Product, AreaRequest } from './types';
+import { UserProfile, UserRole, UserStatus, Shop, Order, OrderItem, Transaction, ActivityType, Permission, RolePermissions, Product, AreaRequest } from './types';
 import { 
   LayoutDashboard, 
   ShoppingCart, 
@@ -59,6 +60,8 @@ import {
   XCircle, 
   Clock, 
   ChevronRight,
+  ChevronDown,
+  Database,
   Menu,
   X,
   Package,
@@ -75,6 +78,7 @@ import {
   ArrowDownCircle,
   FileText,
   ChevronLeft,
+  ArrowLeft,
   ArrowRight,
   Download,
   UserCircle,
@@ -90,13 +94,49 @@ import {
   Bell,
   Edit,
   Upload,
-  Image as ImageIcon
+  Check,
+  Image as ImageIcon,
+  Library,
+  ShieldAlert,
+  Palette,
+  ShieldCheck,
+  CreditCard,
+  TrendingUp,
+  UserCircle2,
+  Warehouse,
+  Leaf
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { useParams } from 'react-router-dom';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell,
+  LineChart,
+  Line,
+  AreaChart,
+  Area
+} from 'recharts';
 
-const PRODUCT_SIZES = ['1 Pound', '2 Pound', '1/2 Pound', 'Gallon', 'Kilolitter'];
+const PRODUCT_SIZES = ['1 Pound', '2 Pound', '1/2 Pound', 'Gallon', 'Liter', 'Kiloliter'];
+
+const CHART_COLORS = [
+  '#2563eb', '#10b981', '#ef4444', '#f59e0b', '#8b5cf6', 
+  '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#6366f1'
+];
+
+const DONUT_COLORS = [
+  '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#dbeafe'
+];
 
 // --- Language Context ---
 type Language = 'en' | 'bn';
@@ -111,271 +151,308 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
-    dashboard: "DASHBOARD",
-    newOrder: "NEW ORDER",
-    orders: "ORDERS",
-    history: "HISTORY",
-    shops: "SHOPS",
-    products: "PRODUCTS",
-    users: "USERS",
-    reports: "REPORTS",
-    logout: "LOGOUT",
-    welcome: "WELCOME BACK",
-    performanceOverview: "HERE'S YOUR PERFORMANCE OVERVIEW.",
-    monthlySales: "MONTHLY SALES",
-    collection: "COLLECTION",
-    due: "DUE",
-    totalOrders: "TOTAL ORDERS",
-    recentOrders: "RECENT ORDERS",
-    viewDetails: "VIEW DETAILS",
-    hideDetails: "HIDE DETAILS",
-    myShop: "MY SHOP",
-    alwaysGreen: "ALWAYS GREEN",
-    fieldRep: "FIELD REP",
-    shopOwner: "SHOP OWNER",
-    admin: "ADMIN",
-    owner: "OWNER",
-    manager: "MANAGER",
-    customer: "CUSTOMER",
-    publicCatalog: "PUBLIC CATALOG",
-    selectLanguage: "SELECT LANGUAGE",
-    english: "ENGLISH",
-    bangla: "BANGLA",
-    orderSummary: "ORDER SUMMARY",
-    grandTotal: "GRAND TOTAL",
-    subtotal: "SUBTOTAL",
-    quantity: "QUANTITY",
-    rate: "RATE",
-    total: "TOTAL",
-    product: "PRODUCT",
-    grade: "GRADE",
-    size: "SIZE",
-    addShop: "ADD SHOP",
-    shopName: "SHOP NAME",
-    area: "AREA",
-    generateCode: "GENERATE CODE & SAVE",
-    cancel: "CANCEL",
-    editProduct: "EDIT PRODUCT",
-    addProduct: "ADD PRODUCT",
-    baseRate: "BASE RATE",
-    saveChanges: "SAVE CHANGES",
-    delete: "DELETE",
-    confirmDelete: "ARE YOU SURE YOU WANT TO DELETE THIS PRODUCT?",
-    requestModify: "REQUEST MODIFICATION",
-    catalog: "CATALOG",
-    shopList: "SHOP LIST",
-    orderList: "ORDER LIST",
-    productList: "PRODUCT LIST",
-    details: "DETAILS",
-    shopCode: "SHOP CODE",
-    ownerLabel: "OWNER",
-    status: "STATUS",
-    actions: "ACTIONS",
-    paymentStatus: "PAYMENT STATUS",
-    amountPaid: "AMOUNT PAID",
-    dueAmount: "DUE AMOUNT",
-    date: "DATE",
-    received: "RECEIVED",
-    pending: "PENDING",
-    delivered: "DELIVERED",
-    cancelled: "CANCELLED",
-    inTransport: "IN TRANSPORT",
-    paid: "PAID",
-    partiallyPaid: "PARTIALLY PAID",
-    unpaid: "UNPAID",
-    addPayment: "ADD PAYMENT",
-    markReceived: "MARK RECEIVED",
-    noOrders: "NO ORDERS FOUND",
-    noShops: "NO SHOPS FOUND",
-    noProducts: "NO PRODUCTS FOUND",
-    search: "SEARCH",
-    filter: "FILTER",
-    fillDetails: "FILL DETAILS",
-    createNewOrder: "CREATE NEW ORDER",
-    shopSelection: "SHOP SELECTION",
-    selectShop: "SELECT SHOP",
-    selectProduct: "SELECT PRODUCT",
-    selectSize: "SELECT SIZE",
-    reviewOrder: "REVIEW ORDER",
-    shopDetails: "SHOP DETAILS",
-    orderHistory: "ORDER HISTORY",
-    viewPastOrders: "VIEW PAST ORDERS",
-    shopOwnerPortal: "SHOP OWNER PORTAL",
-    enterShopCode: "ENTER SHOP CODE",
-    checkStatus: "CHECK STATUS",
-    wantPermanentAccess: "WANT PERMANENT ACCESS?",
-    requestPending: "REQUEST PENDING",
-    requesting: "REQUESTING...",
-    requestPermission: "REQUEST PERMISSION",
-    userManagement: "USER MANAGEMENT",
-    permissionManagement: "PERMISSION MANAGEMENT",
-    manageRoles: "MANAGE ROLES & PERMISSIONS",
-    role: "ROLE",
-    permissions: "PERMISSIONS",
-    savePermissions: "SAVE PERMISSIONS",
-    manageUsers: "MANAGE USERS",
-    manageProducts: "MANAGE PRODUCTS",
-    salesReports: "SALES REPORTS",
-    financialOverview: "FINANCIAL OVERVIEW",
-    shopPerformance: "SHOP PERFORMANCE",
-    explorePaints: "EXPLORE PAINTS",
-    requestSent: "REQUEST SENT",
-    items: "ITEMS",
-    transactions: "TRANSACTIONS",
-    add: "ADD",
-    noTransactions: "NO TRANSACTIONS FOUND",
-    noNote: "NO NOTE",
-    by: "BY",
-    addTransaction: "ADD TRANSACTION",
-    type: "TYPE",
-    payment: "PAYMENT",
-    addDue: "ADD DUE",
-    amount: "AMOUNT",
-    note: "NOTE",
-    save: "SAVE",
-    grant: "GRANT",
-    deny: "DENY",
-    granted: "GRANTED",
-    customSizes: "CUSTOM SIZES",
-    variants: "VARIANTS",
-    orderItems: "ORDER ITEMS",
-    editOrder: "EDIT ORDER",
-    placingOrder: "PLACING ORDER...",
-    confirmSubmit: "CONFIRM SUBMISSION",
-    deleteOrder: "DELETE ORDER",
-    deleteProduct: "DELETE PRODUCT",
-    deleteShop: "DELETE SHOP",
-    manageBranding: "MANAGE BRANDING",
-    totalSales: "TOTAL SALES",
-    totalReceived: "TOTAL RECEIVED",
-    totalOutstanding: "TOTAL OUTSTANDING",
-    user: "USER",
-    name: "NAME",
-    quickActions: "QUICK ACTIONS",
-    noHistory: "NO HISTORY FOUND",
-    shopNotFound: "SHOP NOT FOUND",
-    invalidShopCode: "INVALID SHOP CODE",
-    accountPending: "ACCOUNT PENDING",
+    dashboard: "Dashboard",
+    newOrder: "New Order",
+    orders: "Orders",
+    history: "History",
+    shops: "Shops",
+    products: "Products",
+    users: "Users",
+    reports: "Reports",
+    logout: "Logout",
+    welcome: "Welcome Back",
+    performanceOverview: "Performance Overview",
+    monthlySales: "Monthly Sales",
+    collection: "Collection",
+    due: "Due",
+    totalOrders: "Total Orders",
+    recentOrders: "Recent Orders",
+    viewDetails: "View Details",
+    hideDetails: "Hide Details",
+    myShop: "My Shop",
+    alwaysGreen: "Always Green",
+    fieldRep: "Field Rep",
+    shopOwner: "Shop Owner",
+    admin: "Admin",
+    owner: "Owner",
+    manager: "Manager",
+    worker: "Worker",
+    shop_owner: "Shop Owner",
+    delivery: "Delivery",
+    worker_foreman: "Worker Foreman",
+    manager_foreman: "Manager Foreman",
+    delivery_manager: "Delivery Manager",
+    field_manager: "Field Manager",
+    foreman: "Foreman",
+    delivery_man: "Delivery Man",
+    workerForeman: "Worker Foreman",
+    managerForeman: "Manager Foreman",
+    deliveryManager: "Delivery Manager",
+    fieldManager: "Field Manager",
+    deliveryMan: "Delivery Man",
+    deliveryPersonnel: "Delivery",
+    customer: "Customer",
+    publicCatalog: "Public Catalog",
+    selectLanguage: "Select Language",
+    english: "English",
+    bangla: "Bangla",
+    orderSummary: "Order Summary",
+    grandTotal: "Grand Total",
+    subtotal: "Subtotal",
+    totalQuantity: "Total Quantity",
+    duplicateProductError: "A product with the same name, grade, and sizes already exists.",
+    quantity: "Quantity",
+    rate: "Rate",
+    total: "Total",
+    product: "Product",
+    grade: "Grade",
+    size: "Size",
+    addShop: "Add Shop",
+    shopName: "Shop Name",
+    area: "Area",
+    generateCode: "Generate Code & Save",
+    cancel: "Cancel",
+    editProduct: "Edit Product",
+    addProduct: "Add Product",
+    baseRate: "Base Rate",
+    saveChanges: "Save Changes",
+    delete: "Delete",
+    confirmDelete: "Are you sure you want to delete this product?",
+    requestModify: "Request Modification",
+    catalog: "Catalog",
+    shopList: "Shop List",
+    orderList: "Order List",
+    activeOrders: "Active Orders",
+    orderDetails: "Order Details",
+    orderId: "Order ID",
+    orderDate: "Order Date",
+    modificationHistory: "Modification History",
+    lastModified: "Last Modified",
+    at: "At",
+    viewHistory: "View History",
+    orderNotFound: "Order Not Found",
+    backToOrders: "Back to Orders",
+    all: "All",
+    standardView: "Standard",
+    deliveryView: "Delivery",
+    delQty: "Delivered Qty",
+    packed: "Packed",
+    packedItems: "Packed",
+    gradeAbbr: "Grade",
+    productList: "Product List",
+    details: "Details",
+    shopCode: "Shop Code",
+    ownerLabel: "Owner",
+    status: "Status",
+    actions: "Actions",
+    paymentStatus: "Payment Status",
+    amountPaid: "Amount Paid",
+    dueAmount: "Due Amount",
+    date: "Date",
+    received: "Received",
+    pending: "Pending",
+    delivered: "Delivered",
+    cancelled: "Cancelled",
+    inTransport: "In Transport",
+    paid: "Paid",
+    partiallyPaid: "Partially Paid",
+    unpaid: "Unpaid",
+    addPayment: "Add Payment",
+    markReceived: "Mark Received",
+    noOrders: "No Orders Found",
+    noShops: "No Shops Found",
+    noProducts: "No Products Found",
+    search: "Search",
+    filter: "Filter",
+    fillDetails: "Fill Details",
+    createNewOrder: "Create New Order",
+    shopSelection: "Shop Selection",
+    selectShop: "Select Shop",
+    selectProduct: "Select Product",
+    selectSize: "Select Size",
+    reviewOrder: "Review Order",
+    shopDetails: "Shop Details",
+    orderHistory: "Order History",
+    viewPastOrders: "View Past Orders",
+    enterShopCode: "Enter Shop Code",
+    wantPermanentAccess: "Want Permanent Access?",
+    requestPending: "Request Pending",
+    requesting: "Requesting...",
+    requestPermission: "Request Permission",
+    userManagement: "User Management",
+    manageUsers: "Manage Users",
+    permissionManagement: "Permission Management",
+    manageRoles: "Manage Roles & Permissions",
+    role: "Role",
+    permissions: "Permissions",
+    savePermissions: "Save Permissions",
+    manageProducts: "Manage Products",
+    salesReports: "Sales Reports",
+    financialOverview: "Financial Overview",
+    shopPerformance: "Shop Performance",
+    explorePaints: "Explore Paints",
+    requestSent: "Request Sent",
+    items: "Items",
+    transactions: "Transactions",
+    add: "Add",
+    noTransactions: "No Transactions Found",
+    noNote: "No Note",
+    by: "By",
+    addTransaction: "Add Transaction",
+    type: "Type",
+    payment: "Payment",
+    addDue: "Add Due",
+    amount: "Amount",
+    note: "Note",
+    save: "Save",
+    grant: "Grant",
+    deny: "Deny",
+    granted: "Granted",
+    customSizes: "Custom Sizes",
+    variants: "Variants",
+    orderItems: "Order Items",
+    editOrder: "Edit Order",
+    placingOrder: "Placing Order...",
+    confirmSubmit: "Confirm Order",
+    deleteOrder: "Delete Order",
+    deleteProduct: "Delete Product",
+    deleteShop: "Delete Shop",
+    manageBranding: "Manage Branding",
+    totalSales: "Total Sales",
+    totalReceived: "Total Received",
+    totalOutstanding: "Total Outstanding",
+    user: "User",
+    name: "Name",
+    quickActions: "Quick Actions",
+    noHistory: "No History",
+    shopNotFound: "Shop Not Found",
+    invalidShopCode: "Invalid Shop Code",
+    accountPending: "Account Pending Approval",
     accountSuspended: "Account Suspended",
-    requestReAccess: "Request Re-Access",
-    reAccessRequested: "Re-Access Requested",
-    reAccessRequestSent: "Your request for re-access has been sent to the administrator.",
-    suspendedMessage: "Your account has been suspended by an administrator. Please contact support or request re-access if you believe this is a mistake.",
-    grantReAccess: "Grant Re-Access",
-    denyReAccess: "Deny Re-Access",
-    awaitingApproval: "YOUR ACCOUNT IS AWAITING APPROVAL FROM AN ADMINISTRATOR. PLEASE CHECK BACK LATER.",
-    signIn: "SIGN IN",
-    email: "EMAIL",
-    password: "PASSWORD",
-    loadingOrderflow: "LOADING ORDERFLOW...",
-    completeProfile: "COMPLETE YOUR PROFILE",
-    selectRole: "SELECT YOUR ROLE",
-    administratorMaster: "ADMINISTRATOR (MASTER)",
-    fieldRepresentative: "FIELD REPRESENTATIVE",
-    enterUniqueShopCode: "ENTER YOUR UNIQUE SHOP CODE",
-    settingUp: "SETTING UP...",
-    getStarted: "GET STARTED",
-    or: "OR",
-    day: "DAY",
-    week: "WEEK",
-    month: "MONTH",
-    loginToSeePrice: "LOGIN TO SEE PRICE",
-    noItemsYet: "NO ITEMS YET",
-    checkAsCustomer: "CHECK AS A CUSTOMER",
-    contactRepresentative: "FOR ORDER, CONTACT A REPRESENTATIVE",
-    duplicateProduct: "NEED TO EDIT, ALREADY ORDERED THIS PRODUCT",
-    successAdded: "SUCCESSFULLY ADDED",
-    successUpdated: "SUCCESSFULLY UPDATED",
-    successDeleted: "SUCCESSFULLY DELETED",
-    contactInfo: "CONTACT INFORMATION",
-    saveContactInfo: "SAVE CONTACT INFO",
-    category: "CATEGORY",
-    image: "IMAGE",
-    uploading: "UPLOADING...",
-    chooseImage: "CHOOSE IMAGE",
-    errorUploading: "ERROR UPLOADING IMAGE",
-    successUploaded: "IMAGE UPLOADED SUCCESSFULLY",
-    saveToGallery: "SAVE TO GALLERY",
-    activityLog: "ACTIVITY LOG",
-    createUser: "CREATE USER",
-    displayName: "DISPLAY NAME",
-    creating: "CREATING...",
-    contactName: "CONTACT NAME",
-    contactNumber: "CONTACT NUMBER",
-    profile: "PROFILE",
-    changeName: "CHANGE NAME",
-    profileSettings: "PROFILE SETTINGS",
-    updateProfile: "UPDATE PROFILE",
-    custom: "CUSTOM",
-    phoneNumber: "PHONE NUMBER",
-    contacts: "CONTACTS",
-    shopOwnerDashboard: "SHOP OWNER DASHBOARD",
-    call: "CALL",
-    noContacts: "NO CONTACTS FOUND",
-    onlyWorkersVisible: "ONLY WORKERS ARE VISIBLE TO YOU",
-    hierarchy: "HIERARCHY",
-    gridView: "GRID VIEW",
-    listView: "LIST VIEW",
-    detailsView: "DETAILS VIEW",
-    viewMode: "VIEW MODE",
-    areaRequests: "AREA REQUESTS",
-    myAssignedAreas: "MY ASSIGNED AREAS",
-    requestNewArea: "REQUEST NEW AREA",
-    noAreasAssigned: "NO AREAS ASSIGNED",
-    enterAreaName: "ENTER AREA NAME",
-    submit: "SUBMIT",
-    recentRequests: "RECENT REQUESTS",
-    noAreaRequests: "NO AREA REQUESTS FOUND",
-    worker: "WORKER",
-    requestedArea: "REQUESTED AREA",
-    approve: "APPROVE",
-    reject: "REJECT",
-    approved: "APPROVED",
-    rejected: "REJECTED",
-    requestSubmitted: "REQUEST SUBMITTED SUCCESSFULLY",
-    areas: "AREAS",
-    myAreas: "MY AREAS",
-    branding: "BRANDING",
-    logoSettings: "LOGO SETTINGS",
-    logoSettingsDesc: "Update your application's main logo. Recommended size: 200x200px.",
-    uploadLogo: "UPLOAD LOGO",
-    logoRequirements: "MAX SIZE: 500KB. FORMATS: PNG, JPG, SVG.",
-    noLogo: "NO LOGO",
-    pendingRequests: "PENDING REQUESTS",
-    createOrder: "CREATE ORDER",
-    saving: "SAVING...",
-    logoSizeError: "LOGO MUST BE SMALLER THAN 500KB",
-    logoUploadError: "FAILED TO UPLOAD LOGO",
-    modifiedBy: "MODIFIED BY",
-    lastModified: "LAST MODIFIED",
-    at: "AT",
-    viewHistory: "VIEW HISTORY",
-    close: "CLOSE",
-    notifications: "NOTIFICATIONS",
-    newOrderNotification: "NEW ORDER RECEIVED",
-    orderModifiedNotification: "ORDER HAS BEEN MODIFIED",
-    noNotifications: "NO NOTIFICATIONS",
-    MANAGE_USERS: "USER ACCESS",
-    MANAGE_ROLES: "ROLE CONTROL",
-    MANAGE_PERMISSIONS: "PERMISSION GATE",
-    MANAGE_SHOPS: "SHOP DIRECTORY",
-    MANAGE_PRODUCTS: "INVENTORY MGMT",
-    CREATE_ORDERS: "ORDER PLACEMENT",
-    VIEW_ORDERS: "ORDER LOOKUP",
-    UPDATE_ORDER_STATUS: "STATUS MGMT",
-    MANAGE_PAYMENTS: "PAYMENT CONTROL",
-    VIEW_REPORTS: "DATA ANALYTICS",
-    VIEW_ACTIVITY_LOG: "AUDIT LOGS",
-    MANAGE_CATALOG: "CATALOG MGMT",
-    VIEW_DASHBOARD: "DASHBOARD ACCESS",
-    MARK_ORDER_RECEIVED: "CONFIRM RECEIPT",
-    VIEW_MY_SHOP: "SHOP VIEW",
-    VIEW_SHOPS: "DIRECTORY VIEW",
-    DELETE_ORDER: "ORDER DELETION",
-    EDIT_ORDER: "ORDER REVISION",
-    DELETE_PRODUCT: "PRODUCT DELETION",
-    DELETE_SHOP: "SHOP DELETION",
-    MANAGE_BRANDING: "UI BRANDING",
+    requestReAccess: "Request Re-access",
+    reAccessRequested: "Re-access Requested",
+    reAccessRequestSent: "Request Sent to Administrator",
+    suspendedMessage: "Your account is suspended. Please contact support.",
+    grantReAccess: "Grant Re-access",
+    denyReAccess: "Deny Request",
+    awaitingApproval: "Your account is awaiting approval.",
+    signInWithGoogle: "Sign in with Google",
+    loadingOrderflow: "Loading...",
+    completeProfile: "Complete Your Profile",
+    selectRole: "Select Your Role",
+    administratorMaster: "Administrator",
+    fieldRepresentative: "Field Representative",
+    enterUniqueShopCode: "Enter Unique Shop Code",
+    settingUp: "Setting Up...",
+    getStarted: "Get Started",
+    or: "or",
+    day: "Day",
+    week: "Week",
+    month: "Month",
+    loginToSeePrice: "Login to See Prices",
+    noItemsYet: "No Items Yet",
+    checkAsCustomer: "Explore as Customer",
+    contactRepresentative: "Contact to Order",
+    duplicateProduct: "Product Already Exists",
+    successAdded: "Successfully Added",
+    successUpdated: "Successfully Updated",
+    successDeleted: "Successfully Deleted",
+    contactInfo: "Contact Information",
+    saveContactInfo: "Save Information",
+    category: "Category",
+    image: "Image",
+    uploading: "Uploading...",
+    chooseImage: "Choose Image",
+    errorUploading: "Error Uploading",
+    successUploaded: "Upload Successful",
+    saveToGallery: "Save to Gallery",
+    contactForOrder: "Contact for Order",
+    contactName: "Name",
+    contactNumber: "Number",
+    profile: "Profile",
+    profileSettings: "Profile Settings",
+    updateProfile: "Update Profile",
+    phoneNumber: "Phone Number",
+    contacts: "Contacts",
+    shopOwnerDashboard: "Shop Owner Dashboard",
+    call: "Call",
+    noContacts: "No Contacts Found",
+    onlyWorkersVisible: "Only Field Rep Numbers Visible",
+    areaRequests: "Area Requests",
+    myAssignedAreas: "Assigned Areas",
+    requestNewArea: "Request New Area",
+    noAreasAssigned: "No Areas Assigned",
+    enterAreaName: "Enter Area Name",
+    submit: "Submit",
+    recentRequests: "Recent Requests",
+    noAreaRequests: "No Area Requests Found",
+    requestedArea: "Requested Area",
+    approve: "Approve",
+    reject: "Reject",
+    approved: "Approved",
+    rejected: "Rejected",
+    requestSubmitted: "Request Submitted",
+    areas: "Areas",
+    myAreas: "My Areas",
+    branding: "Branding",
+    logoSettings: "Logo Settings",
+    logoSettingsDesc: "Update your brand logo (Max 200x200px)",
+    uploadLogo: "Upload Logo",
+    logoRequirements: "Max 500KB (PNG, JPG, SVG)",
+    backgroundSettings: "Canvas Settings",
+    backgroundSettingsDesc: "Update your application background theme",
+    uploadBackground: "Upload Theme",
+    bgRequirements: "Max 2MB (PNG, JPG)",
+    noLogo: "No Logo Set",
+    activityLog: "Activity Log",
+    activityLogSubtitle: "Monitor system changes and audit trails",
+    checkStatus: "Check Status",
+    logoSizeError: "Logo size must be under 500KB",
+    logoUploadError: "Logo upload failed",
+    modifiedBy: "Modified By",
+    notifications: "Notifications",
+    newOrderNotification: "New order received",
+    orderModifiedNotification: "Order has been updated",
+    noNotifications: "No Notifications",
+    finance: "Finance",
+    deliverySector: "Delivery Sector",
+    productShopSector: "Product/Shop Sector",
+    workerSector: "Worker Sector",
+    coreOperations: "Core Operations",
+    inventoryCatalog: "Inventory & Catalog",
+    managementControl: "Management & Control",
+    analyticsPerformance: "Analytics & Performance",
+    accountSupport: "Account & Support",
+    MANAGE_USERS: "Manage Users",
+    MANAGE_ROLES: "Manage Roles",
+    MANAGE_PERMISSIONS: "Manage Permissions",
+    MANAGE_SHOPS: "Manage Shops",
+    MANAGE_PRODUCTS: "Manage Products",
+    CREATE_ORDERS: "Create Orders",
+    VIEW_ORDERS: "View Orders",
+    UPDATE_ORDER_STATUS: "Update Status",
+    MANAGE_PAYMENTS: "Manage Payments",
+    VIEW_REPORTS: "View Reports",
+    VIEW_ACTIVITY_LOG: "View Activity Log",
+    MANAGE_CATALOG: "Manage Catalog",
+    VIEW_DASHBOARD: "View Dashboard",
+    MARK_ORDER_RECEIVED: "Mark Received",
+    VIEW_MY_SHOP: "View My Shop",
+    VIEW_SHOPS: "View All Shops",
+    DELETE_ORDER: "Delete Orders",
+    EDIT_ORDER: "Edit Orders",
+    DELETE_PRODUCT: "Delete Products",
+    DELETE_SHOP: "Delete Shops",
+    MANAGE_BRANDING: "Manage Branding",
+    MANAGE_USER_ROLES: "Manage User Roles",
+    ACCESS_FINANCE_VIEW: "Finance View",
+    ACCESS_FINANCE_EDIT: "Finance Edit",
+    ACCESS_DELIVERY_VIEW: "Delivery View",
+    ACCESS_DELIVERY_EDIT: "Delivery Edit",
+    ACCESS_PRODUCT_SHOP_VIEW: "Product/Shop View",
+    ACCESS_PRODUCT_SHOP_EDIT: "Product/Shop Edit",
+    ACCESS_WORKER_VIEW: "Worker View",
+    ACCESS_WORKER_EDIT: "Worker Edit",
   },
   bn: {
     dashboard: "ড্যাশবোর্ড",
@@ -388,7 +465,7 @@ const translations: Record<Language, Record<string, string>> = {
     reports: "রিপোর্ট",
     logout: "লগআউট",
     welcome: "স্বাগতম",
-    performanceOverview: "আপনার পারফরম্যান্স ওভারভিউ এখানে আছে।",
+    performanceOverview: "পারফরম্যান্স ওভারভিউ",
     monthlySales: "মাসিক বিক্রয়",
     collection: "সংগ্রহ",
     due: "বাকি",
@@ -401,7 +478,23 @@ const translations: Record<Language, Record<string, string>> = {
     fieldRep: "ফিল্ড প্রতিনিধি",
     shopOwner: "দোকানের মালিক",
     admin: "অ্যাডমিন",
+    owner: "মালিক",
     manager: "ম্যানেজার",
+    worker: "কর্মী",
+    shop_owner: "দোকানের মালিক",
+    delivery: "ডেলিভারি",
+    worker_foreman: "কর্মী ফোরম্যান",
+    manager_foreman: "ম্যানেজার ফোরম্যান",
+    delivery_manager: "ডেলিভারি ম্যানেজার",
+    field_manager: "ফিল্ড ম্যানেজার",
+    foreman: "ফোরম্যান",
+    delivery_man: "ডেলিভারি ম্যান",
+    workerForeman: "কর্মী ফোরম্যান",
+    managerForeman: "ম্যানেজার ফোরম্যান",
+    deliveryManager: "ডেলিভারি ম্যানেজার",
+    fieldManager: "ফিল্ড ম্যানেজার",
+    deliveryMan: "ডেলিভারি ম্যান",
+    deliveryPersonnel: "ডেলিভারি কর্মী",
     customer: "কাস্টমার",
     publicCatalog: "পাবলিক ক্যাটালগ",
     selectLanguage: "ভাষা নির্বাচন করুন",
@@ -410,6 +503,8 @@ const translations: Record<Language, Record<string, string>> = {
     orderSummary: "অর্ডারের সারাংশ",
     grandTotal: "সর্বমোট",
     subtotal: "উপমোট",
+    totalQuantity: "মোট পরিমাণ",
+    duplicateProductError: "একই নাম, গ্রেড এবং সাইজের পণ্য আগে থেকেই আছে।",
     quantity: "পরিমাণ",
     rate: "দর",
     total: "মোট",
@@ -426,21 +521,36 @@ const translations: Record<Language, Record<string, string>> = {
     baseRate: "বেস রেট",
     saveChanges: "পরিবর্তন সংরক্ষণ করুন",
     delete: "মুছে ফেলুন",
-    confirmDelete: "আপনি কি নিশ্চিত যে আপনি এই পণ্যটি মুছে ফেলতে চান?",
+    confirmDelete: "আপনি কি নিশ্চিত যে এটি মুছে ফেলতে চান?",
     requestModify: "পরিবর্তনের অনুরোধ করুন",
     catalog: "ক্যাটালগ",
     shopList: "দোকানের তালিকা",
     orderList: "অর্ডারের তালিকা",
+    activeOrders: "সক্রিয় অর্ডার",
+    orderDetails: "অর্ডারের বিস্তারিত",
+    orderId: "অর্ডার আইডি",
+    orderDate: "অর্ডারের তারিখ",
+    modificationHistory: "পরিবর্তনের বিবরণ",
+    lastModified: "সর্বশেষ পরিবর্তন",
+    at: "সময়",
+    viewHistory: "ইতিহাস দেখুন",
+    orderNotFound: "অর্ডার পাওয়া যায়নি",
+    backToOrders: "অর্ডারের তালিকায় ফিরে যান",
+    all: "সবগুলো",
+    standardView: "সাধারণ ভিউ",
+    deliveryView: "ডেলিভারি ভিউ",
+    delQty: "পরিমাণ",
+    packed: "প্যাক করা হয়েছে",
+    packedItems: "প্যাক করা",
+    gradeAbbr: "গ্রেড",
     productList: "পণ্যের তালিকা",
     details: "বিস্তারিত",
     shopCode: "দোকান কোড",
-    owner: "মালিক",
     status: "অবস্থা",
     actions: "অ্যাকশন",
     paymentStatus: "পেমেন্ট অবস্থা",
     amountPaid: "পরিশোধিত টাকা",
     dueAmount: "বকেয়া টাকা",
-    date: "তারিখ",
     received: "গৃহীত",
     pending: "পেন্ডিং",
     delivered: "ডেলিভারি করা হয়েছে",
@@ -466,131 +576,121 @@ const translations: Record<Language, Record<string, string>> = {
     shopDetails: "দোকানের বিস্তারিত",
     orderHistory: "অর্ডার ইতিহাস",
     viewPastOrders: "অতীতের অর্ডার দেখুন",
-    shopOwnerPortal: "দোকান মালিক পোর্টাল",
     enterShopCode: "দোকান কোড লিখুন",
-    checkStatus: "অবস্থা পরীক্ষা করুন",
     wantPermanentAccess: "স্থায়ী অ্যাক্সেস চান?",
     requestPending: "অনুরোধ পেন্ডিং",
     requesting: "অনুরোধ করা হচ্ছে...",
     requestPermission: "অনুমতির অনুরোধ করুন",
-    userManagement: "ব্যবহারকারী ব্যবস্থাপনা",
-    manageUsers: "ব্যবহারকারী পরিচালনা করুন",
-    permissionManagement: "অনুমতি ব্যবস্থাপনা",
-    manageRoles: "রোল এবং অনুমতি পরিচালনা",
+    userManagement: "ইউজার ম্যানেজমেন্ট",
+    manageUsers: "ইউজার পরিচালনা",
+    permissionManagement: "পারমিশন ম্যানেজমেন্ট",
+    manageRoles: "রোল এবং পারমিশন",
     role: "রোল",
-    permissions: "অনুমতি",
-    savePermissions: "অনুমতি সংরক্ষণ করুন",
-    manageProducts: "পণ্য পরিচালনা করুন",
-    salesReports: "বিক্রয় রিপোর্ট",
-    financialOverview: "আর্থিক ওভারভিউ",
+    permissions: "পারমিশন",
+    savePermissions: "পারমিশন সেভ করুন",
+    manageProducts: "প্রোডাক্ট ম্যানেজমেন্ট",
+    salesReports: "সেলস রিপোর্ট",
+    financialOverview: "আর্থিক বিবরণী",
     shopPerformance: "দোকানের পারফরম্যান্স",
-    explorePaints: "পেইন্টস এক্সপ্লোর করুন",
+    explorePaints: "পেইন্টস এক্সপ্লোর",
     requestSent: "অনুরোধ পাঠানো হয়েছে",
     items: "আইটেম",
     transactions: "লেনদেন",
     add: "যোগ করুন",
-    noTransactions: "কোন লেনদেন পাওয়া যায়নি",
+    noTransactions: "কোন লেনদেন পাওয়া যায়নি",
     noNote: "কোন নোট নেই",
     by: "দ্বারা",
     addTransaction: "লেনদেন যোগ করুন",
-    type: "ধরন",
+    type: "ধরণ",
     payment: "পেমেন্ট",
-    addDue: "বকেয়া যোগ করুন",
+    addDue: "বকেয়া যোগ করুন",
     amount: "পরিমাণ",
     note: "নোট",
-    save: "সংরক্ষণ করুন",
+    save: "সেভ করুন",
     grant: "অনুমতি দিন",
     deny: "প্রত্যাখ্যান করুন",
     granted: "অনুমোদিত",
     customSizes: "কাস্টম সাইজ",
-    variants: "ভেরিয়েন্ট",
-    orderItems: "অর্ডারের আইটেমগুলো",
-    editOrder: "অর্ডার পরিবর্তন করুন",
-    placingOrder: "অর্ডার করা হচ্ছে...",
+    variants: "ভ্যারিয়েন্ট",
+    orderItems: "অর্ডারের আইটেম",
+    editOrder: "অর্ডার এডিট করুন",
+    placingOrder: "অর্ডার হচ্ছে...",
     confirmSubmit: "অর্ডার নিশ্চিত করুন",
-    deleteOrder: "অর্ডার কাটুন",
-    deleteProduct: "পণ্য মুছুন",
-    deleteShop: "দোকান মুছুন",
-    manageBranding: "ব্র্যান্ডিং কন্ট্রোল",
-    totalSales: "মোট বিক্রয়",
-    totalReceived: "মোট জমা",
-    totalOutstanding: "মোট বকেয়া",
+    deleteOrder: "অর্ডার ডিলিট",
+    deleteProduct: "প্রোডাক্ট ডিলিট",
+    deleteShop: "দোকান ডিলিট",
+    manageBranding: "ব্র্যান্ডিং ম্যানেজমেন্ট",
+    totalSales: "মোট সেলস",
+    totalReceived: "মোট কালেকশন",
+    totalOutstanding: "মোট বকেয়া",
     user: "ইউজার",
     name: "নাম",
-    quickActions: "দ্রুত অ্যাকশন",
-    noHistory: "কোন ইতিহাস নেই",
-    shopNotFound: "দোকান খুঁজে পাওয়া যায়নি",
-    invalidShopCode: "ভুল দোকান কোড",
+    quickActions: "কুইক অ্যাকশন",
+    noHistory: "ইতিহাস নেই",
+    shopNotFound: "দোকান পাওয়া যায়নি",
+    invalidShopCode: "ভুল শপ কোড",
     accountPending: "অ্যাকাউন্ট অনুমোদনের অপেক্ষায়",
-    accountSuspended: "অ্যাকাউন্ট স্থগিত করা হয়েছে",
-    requestReAccess: "পুনরায় অ্যাক্সেসের অনুরোধ দিন",
-    reAccessRequested: "পুনরায় অ্যাক্সেসের অনুরোধ দেওয়া হয়েছে",
+    accountSuspended: "অ্যাকাউন্ট স্থগিত",
+    requestReAccess: "পুনরায় অ্যাক্সেসের অনুরোধ",
+    reAccessRequested: "অনুরোধ পাঠানো হয়েছে",
     reAccessRequestSent: "আপনার আবেদনটি প্রশাসকের কাছে পাঠানো হয়েছে।",
-    suspendedMessage: "প্রশাসক আপনার অ্যাকাউন্টটি স্থগিত করেছেন। অনুগ্রহ করে যোগাযোগ করুন।",
-    grantReAccess: "পুনরায় অ্যাক্সেস দিন",
-    denyReAccess: "আবেদন বাতিল করুন",
-    awaitingApproval: "আপনার অ্যাকাউন্টটি অনুমোদনের অপেক্ষায় রয়েছে। পরে আবার চেষ্টা করুন।",
+    suspendedMessage: "আপনার অ্যাকাউন্টটি স্থগিত করা হয়েছে। অনুগ্রহ করে যোগাযোগ করুন।",
+    grantReAccess: "অ্যাক্সেস ফিরিয়ে দিন",
+    denyReAccess: "বাতিল করুন",
+    awaitingApproval: "আপনার অ্যাকাউন্টটি অনুমোদনের অপেক্ষায় আছে।",
     signInWithGoogle: "গুগল সাইন-ইন",
     loadingOrderflow: "লোড হচ্ছে...",
-    completeProfile: "আপনার প্রোফাইল সম্পন্ন করুন",
-    selectRole: "আপনার পদ নির্বাচন করুন",
+    completeProfile: "প্রোফাইল সম্পন্ন করুন",
+    selectRole: "পদ নির্বাচন করুন",
     administratorMaster: "অ্যাডমিনিস্ট্রেটর",
     fieldRepresentative: "ফিল্ড রিপ্রেজেন্টেটিভ",
-    enterUniqueShopCode: "আপনার দোকানের কোডটি দিন",
-    settingUp: "প্রস্তুত করা হচ্ছে...",
+    enterUniqueShopCode: "ইউনিক শপ কোড দিন",
+    settingUp: "প্রস্তুত হচ্ছে...",
     getStarted: "শুরু করুন",
     or: "অথবা",
     day: "দিন",
     week: "সপ্তাহ",
     month: "মাস",
-    loginToSeePrice: "দাম দেখতে লগইন করুন",
-    noItemsYet: "এখনো কিছু যোগ করা হয়নি",
+    loginToSeePrice: "মূল্য দেখতে লগইন করুন",
+    noItemsYet: "কিছুই যোগ করা হয়নি",
     checkAsCustomer: "কাস্টমার হিসেবে দেখুন",
-    contactRepresentative: "অর্ডার করার জন্য যোগাযোগ করুন",
-    duplicateProduct: "পণ্যটি ইতিমধ্যে যোগ করা হয়েছে, চাইলে আপডেট করুন",
-    successAdded: "সাফল্যের সাথে যোগ করা হয়েছে",
-    successUpdated: "সাফল্যের সাথে আপডেট করা হয়েছে",
-    successDeleted: "সাফল্যের সাথে মুছে ফেলা হয়েছে",
-    contactInfo: "যোগাযোগের তথ্য",
+    contactRepresentative: "যোগাযোগ করুন",
+    duplicateProduct: "প্রোডাক্ট ইতিমধ্যে আছে",
+    successAdded: "সফলভাবে যোগ হয়েছে",
+    successUpdated: "সফলভাবে আপডেট হয়েছে",
+    successDeleted: "সফলভাবে মুছেছে",
+    contactInfo: "কন্টাক্ট ইনফো",
     saveContactInfo: "সেভ করুন",
     category: "ক্যাটাগরি",
     image: "ছবি",
     uploading: "আপলোড হচ্ছে...",
-    chooseImage: "ছবি পছন্দ করুন",
-    errorUploading: "ছবি আপলোডে ত্রুটি",
-    successUploaded: "ছবি আপলোড সম্পন্ন",
+    chooseImage: "ছবি সিলেক্ট করুন",
+    errorUploading: "আপলোডে ত্রুটি",
+    successUploaded: "আপলোড সফল",
     saveToGallery: "গ্যালারিতে সেভ করুন",
-    contactForOrder: "অর্ডারের জন্য যোগাযোগ করুন",
+    contactForOrder: "অর্ডারের জন্য কল করুন",
     contactName: "নাম",
     contactNumber: "নম্বর",
     profile: "প্রোফাইল",
-    changeName: "নাম পরিবর্তন",
     profileSettings: "প্রোফাইল সেটিংস",
-    updateProfile: "প্রোফাইল আপডেট",
-    custom: "কাস্টম",
+    updateProfile: "Update Profile",
     phoneNumber: "ফোন নম্বর",
-    contacts: "যোগাযোগ",
-    shopOwnerDashboard: "দোকান মালিক ড্যাশবোর্ড",
-    call: "কল দিন",
-    noContacts: "কোন যোগাযোগ নম্বর পাওয়া যায়নি",
-    onlyWorkersVisible: "শুধুমাত্র কর্মীদের নম্বর দৃশ্যমান",
-    hierarchy: "শ্রেণিবিন্যাস",
-    gridView: "গ্রিড ভিউ",
-    listView: "লিস্ট ভিউ",
-    detailsView: "বিস্তারিত ভিউ",
-    viewMode: "ভিউ মোড",
+    contacts: "কন্টাক্টস",
+    shopOwnerDashboard: "দোকান ড্যাশবোর্ড",
+    call: "কল",
+    noContacts: "কোন নম্বর নেই",
+    onlyWorkersVisible: "শুধুমাত্র ফিল্ড প্রতিনিধিদের নম্বর",
     areaRequests: "এলাকার আবেদন",
-    myAssignedAreas: "আমার এলাকা",
-    requestNewArea: "নতুন এলাকার আবেদন",
-    noAreasAssigned: "কোন এলাকা বরাদ্দ নেই",
-    enterAreaName: "এলাকার নাম লিখুন",
-    submit: "জমা দিন",
+    myAssignedAreas: "বরাদ্দকৃত এলাকা",
+    requestNewArea: "নতুন এলাকা আবেদন",
+    noAreasAssigned: "কোন এলাকা নেই",
+    enterAreaName: "এলাকার নাম দিন",
+    submit: "সাবমিট",
     recentRequests: "সাম্প্রতিক আবেদন",
-    noAreaRequests: "কোন আবেদন পাওয়া যায়নি",
-    worker: "কর্মী",
+    noAreaRequests: "কোন আবেদন নেই",
     requestedArea: "আবেদনকৃত এলাকা",
-    approve: "অনুমোদন দিন",
-    reject: "বাতিল করুন",
+    approve: "অনুমোদন",
+    reject: "বাতিল",
     approved: "অনুমোদিত",
     rejected: "বাতিলকৃত",
     requestSubmitted: "আবেদন জমা হয়েছে",
@@ -598,32 +698,33 @@ const translations: Record<Language, Record<string, string>> = {
     myAreas: "আমার এলাকা",
     branding: "ব্র্যান্ডিং",
     logoSettings: "লোগো সেটিংস",
-    logoSettingsDesc: "আপনার লোগোটি আপডেট করুন। সাইজ: ২০০x২০০ পিক্সেল।",
+    logoSettingsDesc: "লোগো আপডেট করুন (সর্বোচ্চ ২০০x২০০ পিএক্স)",
     uploadLogo: "লোগো আপলোড",
-    logoRequirements: "সর্বোচ্চ ৫০০কেবি। (PNG, JPG, JPEG, SVG)",
-    backgroundSettings: "ব্যাকগ্রাউন্ড ইমেজ সেটিংস",
-    backgroundSettingsDesc: "আপনার অ্যাপের ব্যাকগ্রাউন্ড ইমেজ আপডেট করুন।",
-    uploadBackground: "ব্যাকগ্রাউন্ড আপলোড",
-    bgRequirements: "সর্বোচ্চ ২এমবি। (PNG, JPG, JPEG)",
+    logoRequirements: "৫০০কেবি এর নিচে (PNG, JPG, SVG)",
+    backgroundSettings: "ব্যাকগ্রাউন্ড সেটিংস",
+    backgroundSettingsDesc: "অ্যাপের থিম ব্যাকগ্রাউন্ড পরিবর্তন করুন",
+    uploadBackground: "থিম আপলোড",
+    bgRequirements: "২এমবি এর নিচে (PNG, JPG)",
     noLogo: "লোগো নেই",
-    activityLog: "কার্যকলাপ লগ",
-    createUser: "নতুন ইউজার তৈরি করুন",
-    displayName: "প্রদর্শিত নাম",
-    creating: "তৈরি হচ্ছে...",
-    pendingRequests: "পেন্ডিং অর্ডার",
-    createOrder: "অর্ডার তৈরি করুন",
-    saving: "সেভ হচ্ছে...",
-    logoSizeError: "লোগোটি ৫০০কেবি এর চেয়ে বড় হওয়া উচিত নয়",
-    logoUploadError: "লোগো আপলোডে ব্যর্থ হয়েছে",
-    modifiedBy: "পরিবর্তন করেছেন",
-    lastModified: "শেষ আপডেট",
-    at: "সময়",
-    viewHistory: "ইতিহাস দেখুন",
-    close: "বন্ধ করুন",
+    activityLog: "অ্যাক্টিভিটি লগ",
+    activityLogSubtitle: "সিস্টেম পরিবর্তন এবং অডিট ট্রেইল মনিটর করুন",
+    checkStatus: "অবস্থা পরীক্ষা",
+    logoSizeError: "লোগো ৫০০কেবি এর নিচে হবে",
+    logoUploadError: "লোগো আপলোড হয়নি",
+    modifiedBy: "পরিবর্তনকারী",
     notifications: "নোটিফিকেশন",
-    newOrderNotification: "নতুন অর্ডার পাওয়া গেছে",
+    newOrderNotification: "নতুন অর্ডার এসেছে",
     orderModifiedNotification: "অর্ডার আপডেট হয়েছে",
     noNotifications: "কোন নোটিফিকেশন নেই",
+    finance: "ফাইন্যান্স",
+    deliverySector: "ডেলিভারি সেক্টর",
+    productShopSector: "পণ্য/দোকান সেক্টর",
+    workerSector: "কর্মী সেক্টর",
+    coreOperations: "মূল অপারেশন",
+    inventoryCatalog: "ইনভেন্টরি এবং ক্যাটালগ",
+    managementControl: "ম্যানেজমেন্ট এবং কন্ট্রোল",
+    analyticsPerformance: "অ্যানালিটিক্স এবং পারফরম্যান্স",
+    accountSupport: "অ্যাকাউন্ট এবং সাপোর্ট",
     MANAGE_USERS: "ইউজার কন্ট্রোল",
     MANAGE_ROLES: "রোল কন্ট্রোল",
     MANAGE_PERMISSIONS: "পারমিশন কন্ট্রোল",
@@ -645,15 +746,34 @@ const translations: Record<Language, Record<string, string>> = {
     DELETE_PRODUCT: "পণ্য মুছে ফেলা",
     DELETE_SHOP: "দোকান মুছে ফেলা",
     MANAGE_BRANDING: "ব্র্যান্ডিং পরিবর্তন",
+    MANAGE_USER_ROLES: "ইউজার রোল ম্যানেজমেন্ট",
+    ACCESS_FINANCE_VIEW: "ফাইন্যান্স (ভিউ)",
+    ACCESS_FINANCE_EDIT: "ফাইন্যান্স (এডিট)",
+    ACCESS_DELIVERY_VIEW: "ডেলিভারি (ভিউ)",
+    ACCESS_DELIVERY_EDIT: "ডেলিভারি (এডিট)",
+    ACCESS_PRODUCT_SHOP_VIEW: "পণ্য/দোকান (ভিউ)",
+    ACCESS_PRODUCT_SHOP_EDIT: "পণ্য/দোকান (এডিট)",
+    ACCESS_WORKER_VIEW: "কর্মী (ভিউ)",
+    ACCESS_WORKER_EDIT: "কর্মী (এডিট)",
   }
 };
 
+const ALL_ROLES: UserRole[] = [
+  'owner', 'admin', 'manager', 'worker', 'shop_owner', 'delivery', 
+  'worker_foreman', 'manager_foreman', 'delivery_manager', 'field_manager', 
+  'foreman', 'delivery_man'
+];
+
 const ALL_PERMISSIONS: Permission[] = [
-  'MANAGE_USERS', 'MANAGE_ROLES', 'MANAGE_PERMISSIONS', 'MANAGE_SHOPS', 'MANAGE_PRODUCTS', 
+  'MANAGE_USERS', 'MANAGE_ROLES', 'MANAGE_USER_ROLES', 'MANAGE_PERMISSIONS', 'MANAGE_SHOPS', 'MANAGE_PRODUCTS', 
   'CREATE_ORDERS', 'VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 
   'VIEW_REPORTS', 'VIEW_ACTIVITY_LOG', 'MANAGE_CATALOG', 'VIEW_DASHBOARD',
   'MARK_ORDER_RECEIVED', 'VIEW_MY_SHOP', 'VIEW_SHOPS', 'DELETE_ORDER', 'EDIT_ORDER',
-  'DELETE_PRODUCT', 'DELETE_SHOP', 'MANAGE_BRANDING'
+  'DELETE_PRODUCT', 'DELETE_SHOP', 'MANAGE_BRANDING',
+  'ACCESS_FINANCE_VIEW', 'ACCESS_FINANCE_EDIT',
+  'ACCESS_DELIVERY_VIEW', 'ACCESS_DELIVERY_EDIT',
+  'ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT',
+  'ACCESS_WORKER_VIEW', 'ACCESS_WORKER_EDIT'
 ];
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
@@ -684,11 +804,21 @@ export const useLanguage = () => {
 };
 
 // --- Branding Context ---
-const BrandingContext = createContext<{ logoUrl: string | null; backgroundUrl: string | null }>({ logoUrl: null, backgroundUrl: null });
+const BrandingContext = createContext<{ 
+  logoUrl: string | null; 
+  backgroundUrl: string | null;
+  accentColor: string;
+  grade1Label: string;
+  grade2Label: string;
+}>({ logoUrl: null, backgroundUrl: null, accentColor: '#2563eb', grade1Label: 'Grade 1', grade2Label: 'Grade 2' });
 
 function BrandingProvider({ children }: { children: ReactNode }) {
+  const { profile } = useAuth();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
+  const [accentColor, setAccentColor] = useState<string>('#2563eb');
+  const [grade1Label, setGrade1Label] = useState<string>('Grade 1');
+  const [grade2Label, setGrade2Label] = useState<string>('Grade 2');
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'branding'), (doc) => {
@@ -696,16 +826,30 @@ function BrandingProvider({ children }: { children: ReactNode }) {
         const data = doc.data();
         setLogoUrl(data.logoUrl || null);
         setBackgroundUrl(data.backgroundUrl || null);
+        setGrade1Label(data.grade1Label || 'Grade 1');
+        setGrade2Label(data.grade2Label || 'Grade 2');
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/branding'));
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (profile?.accentColor) {
+      setAccentColor(profile.accentColor);
+    } else {
+      setAccentColor('#2563eb');
+    }
+  }, [profile]);
+
   return (
-    <BrandingContext.Provider value={{ logoUrl, backgroundUrl }}>
+    <BrandingContext.Provider value={{ logoUrl, backgroundUrl, accentColor, grade1Label, grade2Label }}>
       <div 
         className="min-h-screen bg-slate-50 transition-all duration-700 bg-cover bg-center bg-no-repeat bg-fixed"
-        style={backgroundUrl ? { backgroundImage: `linear-gradient(rgba(248, 250, 252, 0.95), rgba(248, 250, 252, 0.95)), url(${backgroundUrl})` } : {}}
+        style={{
+          ...(backgroundUrl ? { backgroundImage: `linear-gradient(rgba(248, 250, 252, 0.95), rgba(248, 250, 252, 0.95)), url(${backgroundUrl})` } : {}),
+          // @ts-ignore
+          '--primary': accentColor,
+        }}
       >
         {children}
       </div>
@@ -843,6 +987,9 @@ interface AuthContextType {
   registerUser: (email: string, password: string, role: UserRole, displayName: string, shopCode?: string) => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
   rolePermissions: RolePermissions[];
+  connectionError: string | null;
+  initializeDefaultPermissions: () => Promise<void>;
+  saving: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -852,19 +999,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [rolePermissions, setRolePermissions] = useState<RolePermissions[]>([]);
   const [loading, setLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
         // Fetch profile
-        const docRef = doc(db, 'users', firebaseUser.uid);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          setProfile(docSnap.data() as UserProfile);
-        } else {
-          setProfile(null);
+        const path = `users/${firebaseUser.uid}`;
+        try {
+          const docRef = doc(db, 'users', firebaseUser.uid);
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists()) {
+            setProfile(docSnap.data() as UserProfile);
+          } else {
+            setProfile(null);
+          }
+        } catch (error) {
+          console.error("Firestore connection error:", error);
+          setConnectionError("Could not connect to database. Please check your internet connection.");
+          handleFirestoreError(error, OperationType.GET, path);
         }
       } else {
         setProfile(null);
@@ -885,49 +1042,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (rps.length === 0 && profile?.role === 'owner') {
         initializeDefaultPermissions();
       }
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'role_permissions'));
+    }, (error) => {
+      console.error("Role permissions snapshot error:", error);
+      setConnectionError("Could not connect to database. Please check your internet connection.");
+      handleFirestoreError(error, OperationType.LIST, 'role_permissions');
+    });
 
     return () => unsubscribeRP();
   }, [profile]);
 
   const initializeDefaultPermissions = async () => {
     const defaults: RolePermissions[] = [
-      {
-        role: 'owner',
-        permissions: [
-          'MANAGE_USERS', 'MANAGE_ROLES', 'MANAGE_PERMISSIONS', 'MANAGE_SHOPS', 'MANAGE_PRODUCTS', 
-          'CREATE_ORDERS', 'VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 
-          'VIEW_REPORTS', 'VIEW_ACTIVITY_LOG', 'MANAGE_CATALOG', 'VIEW_DASHBOARD',
-          'MARK_ORDER_RECEIVED', 'VIEW_MY_SHOP', 'VIEW_SHOPS'
-        ]
-      },
-      {
-        role: 'admin',
-        permissions: [
-          'MANAGE_USERS', 'MANAGE_PERMISSIONS', 'MANAGE_SHOPS', 'MANAGE_PRODUCTS', 
-          'VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 'MANAGE_CATALOG',
-          'VIEW_DASHBOARD'
-        ]
-      },
-      {
-        role: 'manager',
-        permissions: [
-          'VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 
-          'VIEW_REPORTS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD'
-        ]
-      },
-      {
-        role: 'worker',
-        permissions: ['CREATE_ORDERS', 'VIEW_ORDERS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS']
-      },
-      {
-        role: 'shop_owner',
-        permissions: ['VIEW_ORDERS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'VIEW_MY_SHOP']
-      }
+      { role: 'owner', permissions: [...ALL_PERMISSIONS] },
+      { role: 'admin', permissions: [...ALL_PERMISSIONS] },
+      { role: 'manager', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 'VIEW_REPORTS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'MANAGE_PRODUCTS', 'ACCESS_FINANCE_VIEW', 'ACCESS_DELIVERY_VIEW', 'ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT'] },
+      { role: 'worker', permissions: ['CREATE_ORDERS', 'VIEW_ORDERS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS', 'ACCESS_PRODUCT_SHOP_VIEW'] },
+      { role: 'shop_owner', permissions: ['VIEW_ORDERS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'VIEW_MY_SHOP', 'ACCESS_PRODUCT_SHOP_VIEW'] },
+      { role: 'delivery', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'VIEW_DASHBOARD', 'ACCESS_DELIVERY_VIEW'] },
+      { role: 'foreman', permissions: ['VIEW_ORDERS', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS', 'ACCESS_WORKER_VIEW'] },
+      { role: 'delivery_man', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'ACCESS_DELIVERY_VIEW'] },
+      { role: 'worker_foreman', permissions: ['CREATE_ORDERS', 'VIEW_ORDERS', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS', 'ACCESS_WORKER_VIEW', 'ACCESS_WORKER_EDIT'] },
+      { role: 'manager_foreman', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 'VIEW_REPORTS', 'ACCESS_FINANCE_VIEW', 'ACCESS_FINANCE_EDIT'] },
+      { role: 'delivery_manager', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'ACCESS_DELIVERY_VIEW', 'ACCESS_DELIVERY_EDIT'] },
+      { role: 'field_manager', permissions: ['MANAGE_SHOPS', 'VIEW_ORDERS', 'VIEW_SHOPS', 'ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT'] }
     ];
 
-    for (const d of defaults) {
-      await setDoc(doc(db, 'role_permissions', d.role), d);
+    setSaving('ALL');
+    try {
+      for (const d of defaults) {
+        await setDoc(doc(db, 'role_permissions', d.role), d, { merge: true });
+      }
+      showToast("Permissions initialized/updated successfully");
+    } catch (error) {
+      console.error("Initialization error:", error);
+      showToast("Failed to initialize permissions", "error");
+    } finally {
+      setSaving(null);
     }
   };
 
@@ -997,7 +1147,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, logout, registerUser, hasPermission, rolePermissions }}>
+    <AuthContext.Provider value={{ 
+      user, profile, loading, signIn, logout, registerUser, hasPermission, 
+      rolePermissions, connectionError, initializeDefaultPermissions, saving 
+    }}>
       {children}
     </AuthContext.Provider>
   );
@@ -1134,7 +1287,7 @@ function RegistrationScreen() {
     const newProfile: UserProfile = {
       uid: user.uid,
       email: user.email!,
-      displayName: (user.displayName || 'User').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' '),
+      displayName: user.displayName || 'User',
       phoneNumber,
       role,
       status: role === 'admin' ? 'approved' : 'pending',
@@ -1168,10 +1321,18 @@ function RegistrationScreen() {
             <label className="block text-sm font-medium text-slate-700 mb-2 uppercase">{t('selectRole')}</label>
             <div className="grid grid-cols-1 gap-3">
               {[
-                { id: 'admin', label: t('administratorMaster'), icon: Settings, hidden: user?.email !== "suadkhan.s1.qc@gmail.com" },
-                { id: 'worker', label: t('fieldRepresentative'), icon: ShoppingCart },
+                { id: 'admin', label: t('admin'), icon: Shield, hidden: user?.email !== "suadkhan.s1.qc@gmail.com" },
+                { id: 'owner', label: t('owner'), icon: Shield, hidden: user?.email !== "suadkhan.s1.qc@gmail.com" },
                 { id: 'manager', label: t('manager'), icon: LayoutDashboard },
-                { id: 'shop_owner', label: t('shopOwner'), icon: Store },
+                { id: 'field_manager', label: t('field_manager'), icon: LayoutDashboard },
+                { id: 'shop_owner', label: t('shop_owner'), icon: Store },
+                { id: 'worker', label: t('worker'), icon: ShoppingCart },
+                { id: 'worker_foreman', label: t('worker_foreman'), icon: Users },
+                { id: 'manager_foreman', label: t('manager_foreman'), icon: Shield },
+                { id: 'foreman', label: t('foreman'), icon: Users },
+                { id: 'delivery_manager', label: t('delivery_manager'), icon: Truck },
+                { id: 'delivery_man', label: t('delivery_man'), icon: Truck },
+                { id: 'delivery', label: t('delivery'), icon: Truck },
               ].filter(r => !r.hidden).map((r) => (
                 <button
                   key={r.id}
@@ -1353,33 +1514,63 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const { language, setLanguage, t } = useLanguage();
   const { logoUrl } = useBranding();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const menuItems = [
+  const rawNavItems = [
     { label: t('dashboard'), icon: LayoutDashboard, path: '/', permission: 'VIEW_DASHBOARD' as Permission },
-    { label: t('newOrder'), icon: Plus, path: '/new-order', permission: 'CREATE_ORDERS' as Permission },
+    { label: t('newOrder'), icon: PlusCircle, path: '/new-order', permission: 'CREATE_ORDERS' as Permission },
     { label: t('orders'), icon: Package, path: '/orders', permission: 'VIEW_ORDERS' as Permission },
     { label: t('history'), icon: History, path: '/history', permission: 'VIEW_ORDERS' as Permission },
-    { label: t('shops'), icon: Store, path: '/shops', permission: 'VIEW_SHOPS' as Permission },
-    { label: t('products'), icon: Package, path: '/products', permission: 'MANAGE_PRODUCTS' as Permission },
-    { label: t('users'), icon: Users, path: '/users', permission: 'MANAGE_USERS' as Permission },
-    { label: t('reports'), icon: BarChart3, path: '/reports', permission: 'VIEW_REPORTS' as Permission },
-    { label: t('activityLog'), icon: ActivityLogIcon, path: '/activity', permission: 'VIEW_ACTIVITY_LOG' as Permission },
-    { label: t('contacts'), icon: Phone, path: '/contacts' },
-    { label: t('catalog'), icon: FileText, path: '/catalog', permission: 'MANAGE_CATALOG' as Permission },
-    { label: t('profile'), icon: UserCircle, path: '/profile' },
-  ].filter(item => {
-    if (profile?.role === 'shop_owner' && item.label === t('dashboard')) return false;
-    if (item.path === '/profile' || item.path === '/contacts') return !!profile;
-    return hasPermission(item.permission as Permission);
-  });
+    { label: t('explorePaints'), icon: Library, path: '/catalog', permission: 'MANAGE_CATALOG' as Permission },
+    { label: t('manageProducts'), icon: Box, path: '/products', permission: 'MANAGE_PRODUCTS' as Permission, sector: 'ACCESS_PRODUCT_SHOP_VIEW' as Permission },
+    { label: t('shops'), icon: Store, path: '/shops', permission: 'VIEW_SHOPS' as Permission, sector: 'ACCESS_PRODUCT_SHOP_VIEW' as Permission },
+    { label: t('users'), icon: Users, path: '/users', permission: 'MANAGE_USERS' as Permission, sector: 'ACCESS_WORKER_VIEW' as Permission },
+    { label: t('activityLog'), icon: ShieldCheck, path: '/activity', permission: 'VIEW_ACTIVITY_LOG' as Permission },
+    { label: t('reports'), icon: BarChart3, path: '/reports', permission: 'VIEW_REPORTS' as Permission, sector: 'ACCESS_FINANCE_VIEW' as Permission },
+    { label: t('contacts'), icon: Contact2, path: '/contacts' },
+  ];
+
+  let navItems = [...rawNavItems];
 
   if (profile?.role === 'shop_owner') {
     if (profile.permissionStatus === 'granted' && profile.shopCode) {
-      menuItems.unshift({ label: t('myShop'), icon: Store, path: `/shops/${profile.shopCode}`, permission: 'VIEW_MY_SHOP' as Permission });
+      navItems.unshift({ label: t('myShop'), icon: Warehouse, path: `/shops/${profile.shopCode}`, permission: 'VIEW_MY_SHOP' as Permission, sector: undefined });
     } else {
-      menuItems.unshift({ label: t('shopOwnerDashboard'), icon: LayoutDashboard, path: '/shop-dashboard' });
+      navItems.unshift({ label: t('shopOwnerDashboard'), icon: LayoutDashboard, path: '/shop-dashboard', permission: 'VIEW_DASHBOARD' as Permission, sector: undefined });
     }
+    navItems = navItems.filter(item => item.label !== t('dashboard'));
   }
+
+  const visibleItems = navItems.filter(item => {
+    if (item.path === '/profile' || item.path === '/contacts') return !!profile;
+    const hasBasePermission = item.permission ? hasPermission(item.permission as Permission) : true;
+    const hasSectorPermission = item.sector ? hasPermission(item.sector as Permission) : true;
+    return hasBasePermission && hasSectorPermission;
+  });
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.05,
+        delayChildren: 0.2
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { x: -30, opacity: 0 },
+    visible: {
+      x: 0,
+      opacity: 1,
+      transition: {
+        type: "spring",
+        stiffness: 400,
+        damping: 30
+      }
+    }
+  };
 
   return (
     <>
@@ -1390,95 +1581,134 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsOpen(false)}
-            className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden backdrop-blur-sm"
+            className="fixed inset-0 bg-slate-900/40 z-40 lg:hidden backdrop-blur-md"
           />
         )}
       </AnimatePresence>
 
       <motion.aside
+        initial={{ x: -280 }}
+        animate={{ x: isOpen ? 0 : -280 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 250 }}
         className={cn(
-          "fixed top-0 left-0 bottom-0 w-72 bg-white border-r-2 border-slate-900 z-50 lg:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col",
-          !isOpen && "-translate-x-full"
+          "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 lg:translate-x-0 transition-all",
+          !isOpen && "lg:block lg:translate-x-0"
         )}
       >
-        <div className="flex-1 overflow-y-auto flex flex-col">
-          <div className="p-8 flex items-center justify-between shrink-0 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-white flex items-center justify-center overflow-hidden border-2 border-slate-900">
-                <img src={logoUrl || "https://ais-dev-2t2xxqjcfxzhtv7w5ldbav-180523243505.asia-southeast1.run.app/api/attachments/a7f5a265-27f9-4674-846f-c1249683935b"} alt="Nafeu Paints" className="w-full h-full object-contain mix-blend-multiply" referrerPolicy="no-referrer" />
-              </div>
-              <div>
-                <span className="text-xl font-black text-slate-900 block leading-none uppercase tracking-tighter">Nafeu Paints</span>
-                <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em]">{t('alwaysGreen')}</span>
-              </div>
-            </div>
-            <button onClick={() => setIsOpen(false)} className="lg:hidden text-slate-900">
-              <X className="w-6 h-6" />
-            </button>
+        <div className="p-8 pb-6 flex items-center gap-4 shrink-0 overflow-hidden text-right font-['Georgia']">
+          <motion.div 
+            initial={{ scale: 0.8, rotate: -10 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: 'spring' }}
+            className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-100 border border-slate-100 overflow-hidden shrink-0"
+          >
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+            ) : (
+              <Leaf className="w-6 h-6 text-green-600" />
+            )}
+          </motion.div>
+          <div className="min-w-0">
+            <h1 className="text-xl font-black text-slate-900 tracking-tighter uppercase leading-none truncate">
+              Nafeu Paints
+            </h1>
+            <p className="text-[10px] font-bold text-blue-600 mt-1 tracking-widest uppercase leading-none">
+              {t('alwaysGreen')}
+            </p>
           </div>
-
-          <div className="px-8 py-4 shrink-0 border-b border-slate-100">
-            <div className="flex bg-slate-900 p-1 rounded-none">
-              <button
-                onClick={() => setLanguage('en')}
-                className={cn(
-                  "flex-1 py-1 text-[10px] font-black rounded-none transition-all",
-                  language === 'en' ? "bg-white text-slate-900" : "text-slate-400"
-                )}
-              >
-                ENGLISH
-              </button>
-              <button
-                onClick={() => setLanguage('bn')}
-                className={cn(
-                  "flex-1 py-1 text-[10px] font-black rounded-none transition-all",
-                  language === 'bn' ? "bg-white text-slate-900" : "text-slate-400"
-                )}
-              >
-                বাংলা
-              </button>
-            </div>
-          </div>
-
-          <nav className="px-4 py-6 space-y-1 flex-1">
-            {menuItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setIsOpen(false)}
-                className="flex items-center gap-4 px-4 py-3 text-slate-500 hover:text-blue-600 transition-all group relative overflow-hidden"
-              >
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 scale-y-0 group-hover:scale-y-100 transition-transform origin-bottom" />
-                <item.icon className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                <span className="font-black uppercase text-xs tracking-widest">{item.label}</span>
-              </Link>
-            ))}
-          </nav>
         </div>
 
-        <div className="p-6 border-t-2 border-slate-900 shrink-0 bg-slate-50">
-          <div className="flex items-center gap-3 px-2 py-3 mb-4">
-            <div className="w-12 h-12 bg-white border-2 border-slate-900 flex items-center justify-center text-slate-900 font-black text-xl">
-              {profile?.displayName?.[0] || 'U'}
+        <div className="px-6 pb-6 shrink-0">
+          <div className="bg-slate-50 p-1.5 rounded-2xl flex items-center gap-1 border border-slate-200/50">
+            {(['en', 'bn'] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => setLanguage(l)}
+                className={cn(
+                  "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all",
+                  language === l ? "bg-white text-slate-900 shadow-sm border border-slate-200/50" : "text-slate-400 hover:text-slate-600"
+                )}
+              >
+                {l === 'en' ? 'English' : 'বাংলা'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 space-y-8 scrollbar-hide pb-8">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-1"
+          >
+            {visibleItems.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <motion.button
+                  key={item.path}
+                  variants={itemVariants}
+                  whileHover={{ x: 6 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    navigate(item.path);
+                    setIsOpen(false);
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-[11px] font-black tracking-wider uppercase transition-all relative group",
+                    isActive 
+                      ? "bg-slate-900 text-white shadow-xl shadow-slate-200" 
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  )}
+                >
+                  <item.icon className={cn(
+                    "w-5 h-5 group-hover:scale-110 transition-transform",
+                    isActive ? "text-blue-400" : ""
+                  )} />
+                  <span>{item.label}</span>
+                  {isActive && (
+                    <motion.div 
+                      layoutId="nav-dot"
+                      className="ml-auto w-1.5 h-1.5 bg-blue-400 rounded-full" 
+                    />
+                  )}
+                </motion.button>
+              );
+            })}
+          </motion.div>
+        </div>
+
+        <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+          <div className="flex items-center gap-4 p-3 bg-white rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100 font-black text-slate-400">
+              {profile?.displayName?.[0]?.toUpperCase() || 'U'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-black text-slate-900 truncate uppercase tracking-tight">{profile?.displayName}</p>
-              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">
-                {profile?.role === 'worker' ? t('fieldRep') : 
-                 profile?.role === 'shop_owner' ? t('shopOwner') :
-                 profile?.role === 'admin' ? t('admin') :
-                 profile?.role === 'manager' ? t('manager') :
-                 profile?.role.replace('_', ' ')}
+              <p className="text-xs font-black text-slate-900 truncate uppercase tracking-tighter">{profile?.displayName}</p>
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest leading-none mt-1">
+                {profile?.role ? t(profile.role) : ''}
               </p>
             </div>
           </div>
-          <button
-            onClick={logout}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all font-black uppercase text-xs tracking-widest border border-red-200"
-          >
-            <LogOut className="w-4 h-4" />
-            {t('logout')}
-          </button>
+          
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                navigate('/profile');
+                setIsOpen(false);
+              }}
+              className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-sm"
+            >
+              <UserCircle2 className="w-4 h-4" />
+              {t('profile')}
+            </button>
+            <button
+              onClick={logout}
+              className="flex items-center justify-center gap-2 py-3 px-4 bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-sm shadow-red-50"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </motion.aside>
     </>
@@ -1619,7 +1849,7 @@ function Dashboard() {
     startOfMonth.setHours(0, 0, 0, 0);
     
     let q;
-    if (hasPermission('VIEW_REPORTS')) {
+    if (hasPermission('VIEW_REPORTS') && hasPermission('ACCESS_FINANCE_VIEW')) {
       q = query(collection(db, 'orders'));
     } else if (profile.role === 'shop_owner') {
       q = query(collection(db, 'orders'), where('shopCode', '==', profile.shopCode));
@@ -1668,70 +1898,106 @@ function Dashboard() {
     <div className="space-y-8">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">{t('welcome')}, {profile?.displayName}!</h1>
-          <p className="text-slate-500">{t('performanceOverview')}</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t('welcome')}, {profile?.displayName}!</h1>
+          <p className="text-slate-500 font-medium">{t('performanceOverview')}</p>
         </div>
-        {hasPermission('VIEW_REPORTS') && (
+        {hasPermission('VIEW_REPORTS') && hasPermission('ACCESS_FINANCE_VIEW') && (
           <button
             onClick={() => setShowDetails(!showDetails)}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:bg-slate-50 transition-colors shadow-sm"
+            className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 rounded-2xl text-slate-700 font-black text-sm uppercase tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95"
           >
-            {showDetails ? <X className="w-5 h-5" /> : <BarChart3 className="w-5 h-5" />}
+            {showDetails ? <X className="w-4 h-4" /> : <BarChart3 className="w-4 h-4" />}
             {showDetails ? t('hideDetails') : t('viewDetails')}
           </button>
         )}
       </header>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { label: t('monthlySales'), value: `৳${stats.monthlySales.toLocaleString()}`, icon: DollarSign, color: 'blue', sector: 'ACCESS_FINANCE_VIEW' },
+          { label: t('collection'), value: `৳${stats.collection.toLocaleString()}`, icon: Wallet, color: 'emerald', sector: 'ACCESS_FINANCE_VIEW' },
+          { label: t('due'), value: `৳${stats.due.toLocaleString()}`, icon: AlertCircle, color: 'amber', sector: 'ACCESS_FINANCE_VIEW' },
+          { label: t('totalOrders'), value: stats.totalOrders.toString(), icon: Package, color: 'indigo' },
+        ].filter(s => s.sector ? hasPermission(s.sector as Permission) : true).map((stat) => (
+          <div key={stat.label} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden group">
+            <div className={cn(
+              "w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110",
+              stat.color === 'blue' && "bg-blue-50 text-blue-600",
+              stat.color === 'amber' && "bg-amber-50 text-amber-600",
+              stat.color === 'emerald' && "bg-emerald-50 text-emerald-600",
+              stat.color === 'indigo' && "bg-indigo-50 text-indigo-600",
+            )}>
+              <stat.icon className="w-6 h-6" />
+            </div>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-1">{stat.label}</p>
+            <p className="text-2xl font-black text-slate-800 tracking-tight">{stat.value}</p>
+            <div className={cn(
+              "absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-[0.03] transition-transform group-hover:scale-150",
+              stat.color === 'blue' && "bg-blue-600",
+              stat.color === 'amber' && "bg-amber-600",
+              stat.color === 'emerald' && "bg-emerald-600",
+              stat.color === 'indigo' && "bg-indigo-600",
+            )} />
+          </div>
+        ))}
+      </div>
+
       <AnimatePresence>
-        {showDetails ? (
+        {showDetails && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6 overflow-hidden"
+            className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-hidden"
           >
-            {[
-              { label: t('monthlySales'), value: `৳${stats.monthlySales.toFixed(2)}`, icon: BarChart3, color: 'blue' },
-              { label: t('collection'), value: `৳${stats.collection.toFixed(2)}`, icon: Wallet, color: 'emerald' },
-              { label: t('due'), value: `৳${stats.due.toFixed(2)}`, icon: AlertCircle, color: 'red' },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className={cn(
-                  "w-12 h-12 rounded-xl flex items-center justify-center mb-4",
-                  stat.color === 'blue' && "bg-blue-50 text-blue-600",
-                  stat.color === 'emerald' && "bg-emerald-50 text-emerald-600",
-                  stat.color === 'red' && "bg-red-50 text-red-600",
-                )}>
-                  <stat.icon className="w-6 h-6" />
-                </div>
-                <p className="text-slate-500 text-sm font-medium">{stat.label}</p>
-                <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
+            {/* Quick Chart: Weekly Orders */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-64">
+              <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">{t('totalOrders')}</h3>
+              <div className="h-40 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={recentOrders.slice(0, 7).reverse().map((o, i) => ({ name: i, value: o.grandTotal }))}>
+                    <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <Tooltip cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }} content={() => null} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-            ))}
+            </div>
+            
+            {/* Quick Chart: Collection Distribution */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-64">
+              <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">{t('paymentStatus')}</h3>
+              <div className="h-40 w-full flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: t('received'), value: stats.collection },
+                        { name: t('due'), value: stats.due }
+                      ]}
+                      innerRadius={40}
+                      outerRadius={55}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      <Cell fill="#10b981" />
+                      <Cell fill="#ef4444" />
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1 text-right">
+                  <div className="flex items-center gap-2 justify-end">
+                    <span className="text-[10px] font-black text-slate-500 uppercase">{t('received')}</span>
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  </div>
+                  <div className="flex items-center gap-2 justify-end">
+                    <span className="text-[10px] font-black text-slate-500 uppercase">{t('due')}</span>
+                    <div className="w-2 h-2 rounded-full bg-red-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
           </motion.div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { label: t('monthlySales'), value: `৳${stats.monthlySales.toFixed(2)}`, icon: DollarSign, color: 'blue' },
-              { label: t('totalOrders'), value: stats.totalOrders.toString(), icon: Package, color: 'indigo' },
-              { label: t('collection'), value: `৳${stats.collection.toFixed(2)}`, icon: Wallet, color: 'emerald' },
-              { label: t('due'), value: `৳${stats.due.toFixed(2)}`, icon: AlertCircle, color: 'amber' },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className={cn(
-                  "w-12 h-12 rounded-xl flex items-center justify-center mb-4",
-                  stat.color === 'blue' && "bg-blue-50 text-blue-600",
-                  stat.color === 'amber' && "bg-amber-50 text-amber-600",
-                  stat.color === 'emerald' && "bg-emerald-50 text-emerald-600",
-                  stat.color === 'indigo' && "bg-indigo-50 text-indigo-600",
-                )}>
-                  <stat.icon className="w-6 h-6" />
-                </div>
-                <p className="text-slate-500 text-sm font-medium">{stat.label}</p>
-                <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
-              </div>
-            ))}
-          </div>
         )}
       </AnimatePresence>
 
@@ -1856,7 +2122,8 @@ function NewOrder() {
     if (!summaryRef.current) return;
     try {
       const dataUrl = await htmlToImage.toJpeg(summaryRef.current, { 
-        quality: 0.95,
+        quality: 1,
+        pixelRatio: 4,
         backgroundColor: '#ffffff'
       });
       const link = document.createElement('a');
@@ -1983,6 +2250,23 @@ function NewOrder() {
   };
 
   const grandTotal = items.reduce((sum, item) => sum + item.total, 0);
+
+  // Grouped summary for preview
+  const groupedItems = items.reduce((acc: any, item) => {
+    const size = item.size || 'Other';
+    const grade = item.grade || '1';
+    
+    if (!acc[size]) acc[size] = { grades: {}, totalQty: 0, totalAmount: 0 };
+    if (!acc[size].grades[grade]) acc[size].grades[grade] = { items: [], qty: 0, amount: 0 };
+    
+    acc[size].grades[grade].items.push(item);
+    acc[size].grades[grade].qty += item.quantity;
+    acc[size].grades[grade].amount += item.total;
+    acc[size].totalQty += item.quantity;
+    acc[size].totalAmount += item.total;
+    
+    return acc;
+  }, {});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2243,8 +2527,9 @@ function NewOrder() {
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm"
           >
             <div className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-              <div ref={summaryRef} className="flex-1 overflow-y-auto p-8 sm:p-12 space-y-8">
-                <div className="flex justify-between items-start">
+              <div className="flex-1 overflow-y-auto p-8 sm:p-12">
+                <div ref={summaryRef} className="space-y-8 bg-white">
+                  <div className="flex justify-between items-start">
                   <div className="space-y-4">
                     <div className="bg-blue-600 text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] inline-block">
                       {editOrderId ? t('editOrder') : t('orderSummary')}
@@ -2262,25 +2547,77 @@ function NewOrder() {
                   </div>
                 </div>
 
-                <div className="space-y-6">
-                  {items.map((item, i) => (
-                    <div key={i} className="flex gap-6 items-center p-6 bg-slate-50 rounded-3xl border border-slate-100 group transition-all hover:border-blue-200">
-                      <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 shrink-0 font-black text-blue-600 text-lg">
-                        {item.quantity}
+                <div className="space-y-12">
+                  {Object.entries(groupedItems).map(([size, sizeData]: [string, any]) => (
+                    <div key={size} className="space-y-6">
+                      <div className="flex items-center gap-4">
+                        <div className="h-px flex-1 bg-slate-100" />
+                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] whitespace-nowrap bg-white px-4">
+                          {size} {t('size')}
+                        </h3>
+                        <div className="h-px flex-1 bg-slate-100" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="px-2 py-0.5 bg-slate-900 text-white text-[8px] font-black uppercase rounded tracking-widest">G{item.grade}</span>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">{item.size}</span>
-                        </div>
-                        <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight truncate">{item.productName}</h3>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">{t('total')}</p>
-                        <p className="font-mono font-black text-slate-900">৳{item.total.toLocaleString()}</p>
+
+                      <div className="space-y-8">
+                        {Object.entries(sizeData.grades).map(([grade, gradeData]: [string, any]) => (
+                          <div key={grade} className="space-y-4">
+                            <div className="flex items-center justify-between px-2">
+                              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-md border border-blue-100/50">
+                                {t('grade')} {grade}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3">
+                              {gradeData.items.map((item: any, i: number) => (
+                                <div key={i} className="flex gap-4 items-center p-4 bg-white rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden group">
+                                  <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center shrink-0 font-black text-slate-400 text-sm border border-slate-100 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
+                                    {item.quantity}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-base font-black text-slate-800 uppercase tracking-tight truncate mb-0.5">{item.productName}</h4>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">৳{item.rate.toLocaleString()} / unit</p>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <p className="text-sm font-black text-slate-900">৳{item.total.toLocaleString()}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            
+                            <div className="flex justify-between items-center px-6 py-4 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                               <div className="space-y-1">
+                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('subtotal')}</p>
+                                 <p className="text-lg font-black text-slate-900">৳{gradeData.amount.toLocaleString()}</p>
+                               </div>
+                               <div className="text-right space-y-1">
+                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('items')}</p>
+                                 <p className="text-lg font-black text-blue-600">{gradeData.qty}</p>
+                               </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
+                </div>
+
+                {/* Final Summary Table */}
+                <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-200 space-y-8">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] text-center">{t('orderSummary')}</h3>
+                  <div className="space-y-4">
+                    {Object.entries(groupedItems).map(([size, sizeData]: [string, any]) => (
+                      <div key={size} className="flex justify-between items-center pb-4 border-b border-slate-200 last:border-0 last:pb-0">
+                        <div>
+                          <span className="text-sm font-black text-slate-900 uppercase tracking-tight">{size} {t('size')}</span>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('totalQuantity')}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-lg font-black text-blue-600">{sizeData.totalQty} <span className="text-[10px] opacity-50">UNITS</span></span>
+                          <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">৳{sizeData.totalAmount.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -2294,8 +2631,9 @@ function NewOrder() {
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div className="p-8 bg-slate-50 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-8 bg-slate-50 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <button
                   type="button"
                   onClick={() => setShowSummary(false)}
@@ -2441,7 +2779,7 @@ function ShopDetails() {
   if (loading) return <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
   if (!shop) return <div className="p-12 text-center text-slate-500 uppercase font-bold">{t('shopNotFound')}</div>;
 
-  const canManagePayments = hasPermission('MANAGE_PAYMENTS');
+  const canManagePayments = hasPermission('MANAGE_PAYMENTS') && hasPermission('ACCESS_FINANCE_EDIT');
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -2630,6 +2968,365 @@ function ShopDetails() {
   );
 }
 
+function OrderDetails() {
+  const { id } = useParams<{ id: string }>();
+  const { profile, hasPermission } = useAuth();
+  const { t } = useLanguage();
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+  const [order, setOrder] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'standard' | 'delivery'>('standard');
+
+  useEffect(() => {
+    if (!id) return;
+    const unsubscribe = onSnapshot(doc(db, 'orders', id), (doc) => {
+      if (doc.exists()) {
+        setOrder({ id: doc.id, ...doc.data() });
+      } else {
+        setOrder(null);
+      }
+      setLoading(false);
+    }, (error) => handleFirestoreError(error, OperationType.GET, `orders/${id}`));
+
+    return () => unsubscribe();
+  }, [id]);
+
+  const updateItem = async (index: number, updates: Partial<OrderItem>) => {
+    if (!id || !order) return;
+    const newItems = [...order.items];
+    const item = { ...newItems[index], ...updates };
+    
+    // Recalculate total for this item
+    const qty = item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity;
+    item.total = qty * item.rate;
+    newItems[index] = item;
+
+    // Recalculate grand total
+    const newGrandTotal = newItems.reduce((sum, i) => sum + i.total, 0);
+    const newDueAmount = newGrandTotal - (order.amountPaid || 0);
+
+    try {
+      await updateDoc(doc(db, 'orders', id), {
+        items: newItems,
+        grandTotal: newGrandTotal,
+        dueAmount: newDueAmount,
+        updatedAt: new Date().toISOString(),
+        modificationHistory: arrayUnion({
+          uid: profile?.uid || 'unknown',
+          userName: profile?.displayName || profile?.email || 'Unknown',
+          timestamp: new Date().toISOString(),
+          action: `ITEM_UPDATED: ${item.productName} (Packed: ${item.packed ? 'Yes' : 'No'}, D.Qty: ${qty})`
+        })
+      });
+      showToast(t('successUpdated'));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `orders/${id}`);
+    }
+  };
+
+  if (loading) return <LoadingScreen />;
+  if (!order) return (
+    <div className="flex flex-col items-center justify-center p-12 space-y-4">
+      <Package className="w-16 h-16 text-slate-200" />
+      <h2 className="text-xl font-bold text-slate-800">{t('orderNotFound') || 'Order Not Found'}</h2>
+      <button onClick={() => navigate('/orders')} className="text-blue-600 font-bold hover:underline">
+        {t('backToOrders') || 'Back to Orders'}
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8 pb-12">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 font-bold italic font-[Georgia]">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => navigate('/orders')}
+            className="p-3 bg-[#c3eeef] rounded-2xl shadow-sm border border-slate-100 text-slate-400 hover:text-blue-600 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">{t('orderDetails') || 'Order Details'}</h1>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('orderId') || 'Order ID'}: #{order.id}</p>
+          </div>
+        </div>
+        {(profile?.role === 'manager' || profile?.role === 'delivery' || profile?.role === 'delivery_manager' || profile?.role === 'admin' || profile?.role === 'owner') && (
+          <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm self-start md:self-auto">
+            <button
+              onClick={() => setViewMode('standard')}
+              className={cn(
+                "px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                viewMode === 'standard' ? "bg-slate-900 text-white shadow-lg shadow-slate-200" : "text-slate-400 hover:text-slate-600"
+              )}
+            >
+              {t('standardView') || 'STANDARD'}
+            </button>
+            <button
+              onClick={() => setViewMode('delivery')}
+              className={cn(
+                "px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                viewMode === 'delivery' ? "bg-blue-600 text-white shadow-lg shadow-blue-100" : "text-slate-400 hover:text-slate-600"
+              )}
+            >
+              {t('deliveryView') || 'DELIVERY'}
+            </button>
+          </div>
+        )}
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="md:col-span-2 space-y-6">
+          {/* Main Info */}
+          <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
+            <div className="flex justify-between items-start">
+              <div className="space-y-1">
+                <div className={cn(
+                  "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest inline-block mb-2",
+                  order.status === 'pending' && "bg-amber-50 text-amber-600",
+                  order.status === 'in_transport' && "bg-blue-50 text-blue-600",
+                  order.status === 'delivered' && "bg-emerald-50 text-emerald-600",
+                  order.status === 'cancelled' && "bg-red-50 text-red-600",
+                  order.status === 'received' && "bg-purple-50 text-purple-600",
+                )}>
+                  {t(order.status)}
+                </div>
+                <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">{order.shopName}</h2>
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">{order.shopCode}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">{t('orderDate') || 'Order Date'}</p>
+                <p className="font-bold text-slate-900">{format(new Date(order.createdAt), 'MMM d, yyyy')}</p>
+                <p className="text-xs text-slate-400 font-medium">{format(new Date(order.createdAt), 'h:mm a')}</p>
+              </div>
+            </div>
+
+            <div className="h-px bg-slate-50" />
+
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">{t('items')}</h3>
+                {viewMode === 'delivery' && (
+                   <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                     {order.items.filter((i: any) => i.packed).length} / {order.items.length} {t('packedItems') || 'PACKED'}
+                   </span>
+                )}
+              </div>
+              
+              {viewMode === 'standard' ? (
+                <div className="space-y-4">
+                  {order.items.map((item: any, i: number) => (
+                    <div key={i} className="flex flex-col sm:flex-row gap-4 sm:items-center p-6 bg-slate-50 rounded-3xl border border-slate-100 transition-all hover:bg-white hover:border-blue-200">
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm shrink-0 font-black text-blue-600">
+                          {item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="px-1.5 py-0.5 bg-slate-900 text-white text-[8px] font-black uppercase rounded">{t('gradeAbbr') || 'G'}{item.grade}</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.size}</span>
+                          </div>
+                          <h4 className="text-sm font-black text-slate-800 uppercase truncate">{item.productName}</h4>
+                          {item.deliveredQuantity !== undefined && item.deliveredQuantity !== item.quantity && (
+                            <p className="text-[10px] text-red-500 font-black uppercase mt-1">
+                              Ordered: {item.quantity}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-6 justify-between sm:justify-end">
+                        {(profile?.role === 'manager' || profile?.role === 'delivery' || profile?.role === 'delivery_manager' || profile?.role === 'admin' || profile?.role === 'owner') && (
+                          <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-slate-100 shrink-0">
+                            <div className="flex items-center gap-2">
+                              <label className="text-[9px] font-black text-slate-300 uppercase">{t('delQty') || 'QTY'}</label>
+                              <input 
+                                type="number"
+                                min="0"
+                                value={item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity}
+                                onChange={(e) => updateItem(i, { deliveredQuantity: Number(e.target.value) })}
+                                className="w-12 bg-slate-50 rounded-lg text-center font-black text-xs py-1"
+                              />
+                            </div>
+                            <button
+                              onClick={() => updateItem(i, { packed: !item.packed })}
+                              className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all",
+                                item.packed ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                              )}
+                            >
+                              {item.packed ? <Check className="w-3 h-3" /> : null}
+                              {t('packed')}
+                            </button>
+                          </div>
+                        )}
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-black text-slate-900">৳{item.total.toLocaleString()}</p>
+                          <p className="text-[9px] font-bold text-slate-300">৳{item.rate.toLocaleString()} / unit</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* DELIVERER COMPACT VIEW */
+                <div className="divide-y divide-slate-50 border border-slate-50 rounded-3xl overflow-hidden shadow-sm">
+                  {order.items.map((item: any, i: number) => (
+                    <div 
+                      key={i} 
+                      className={cn(
+                        "flex items-center gap-4 p-5 transition-colors",
+                        item.packed ? "bg-emerald-50/30" : "bg-white"
+                      )}
+                    >
+                      <button
+                        onClick={() => updateItem(i, { packed: !item.packed })}
+                        className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all shrink-0",
+                          item.packed ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-100 bg-slate-50 text-transparent"
+                        )}
+                      >
+                        <Check className="w-5 h-5 stroke-[4]" />
+                      </button>
+                      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4 items-center">
+                        <div>
+                          <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('product') || 'PRODUCT'}</p>
+                          <p className="text-xs font-black text-slate-900 uppercase truncate">{item.productName}</p>
+                        </div>
+                        <div>
+                           <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('size')}</p>
+                           <p className="text-xs font-black text-slate-900 uppercase">{item.size} ({t('gradeAbbr')}{item.grade})</p>
+                        </div>
+                        <div>
+                           <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('quantity')}</p>
+                           <div className="flex items-center gap-3">
+                             <span className="text-sm font-black text-blue-600">{item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity}</span>
+                             <div className="flex gap-1">
+                               <button 
+                                 onClick={() => {
+                                   const cur = item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity;
+                                   if (cur > 0) updateItem(i, { deliveredQuantity: cur - 1 });
+                                 }}
+                                 className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200"
+                               >-</button>
+                               <button 
+                                 onClick={() => {
+                                   const cur = item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity;
+                                   updateItem(i, { deliveredQuantity: cur + 1 });
+                                 }}
+                                 className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200"
+                               >+</button>
+                             </div>
+                           </div>
+                        </div>
+                        <div className="text-right sm:block hidden">
+                           <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('total')}</p>
+                           <p className="text-xs font-black text-slate-900">৳{item.total.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Action History */}
+          <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+            <div className="flex items-center gap-2">
+              <ActivityLogIcon className="w-4 h-4 text-blue-600" />
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">{t('modificationHistory')}</h3>
+            </div>
+            <div className="space-y-4 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-px before:bg-slate-100">
+              {order.modificationHistory?.slice().reverse().map((log: any, i: number) => (
+                <div key={i} className="flex gap-4 relative">
+                  <div className="w-6 h-6 bg-white border-2 border-slate-100 rounded-full flex items-center justify-center shrink-0 z-10">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full" />
+                  </div>
+                  <div className="flex-1 pb-4">
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{log.action.replace(/_/g, ' ')}</span>
+                        <span className="text-[9px] font-bold text-slate-400">{format(new Date(log.timestamp), 'MMM d, h:mm a')}</span>
+                      </div>
+                      <p className="text-xs font-bold text-slate-700 capitalize">{log.userName}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="space-y-8">
+          {/* Summary Card */}
+          <section className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl text-white space-y-6 overflow-hidden relative group">
+            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
+              <Package className="w-32 h-32" />
+            </div>
+            <div className="relative z-10">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{t('grandTotal')}</p>
+              <h2 className="text-4xl font-black tracking-tighter">৳{order.grandTotal.toLocaleString()}</h2>
+            </div>
+            <div className="space-y-3 relative z-10">
+              <div className="flex justify-between items-center py-2 border-b border-white/10">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('subtotal')}</span>
+                <span className="text-sm font-bold">৳{order.grandTotal.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-white/10">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('paid') || 'PAID'}</span>
+                <span className="text-sm font-bold text-emerald-400">৳{(order.amountPaid || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center py-4">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('due') || 'DUE'}</span>
+                <span className="text-xl font-black text-red-400">৳{(order.grandTotal - (order.amountPaid || 0)).toLocaleString()}</span>
+              </div>
+            </div>
+          </section>
+
+          {/* User Info */}
+          <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+             <div className="space-y-4">
+               <div>
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">{t('worker')}</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center font-black text-blue-600 text-sm">
+                      {order.workerName.charAt(0)}
+                    </div>
+                    <p className="text-sm font-black text-slate-800 uppercase">{order.workerName}</p>
+                  </div>
+               </div>
+               {order.creatorName && (
+                 <div>
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">{t('creator') || 'CREATOR'}</p>
+                    <p className="text-sm font-black text-slate-800 uppercase">{order.creatorName}</p>
+                 </div>
+               )}
+               {order.note && (
+                 <div>
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">{t('note')}</p>
+                    <p className="text-xs font-medium text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-100">{order.note}</p>
+                 </div>
+               )}
+             </div>
+          </section>
+
+          <div className="grid grid-cols-1 gap-4">
+               {hasPermission('EDIT_ORDER') && (
+                  <button 
+                    onClick={() => navigate('/new-order', { state: { editOrder: order } })}
+                    className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-black transition-all flex items-center justify-center gap-2"
+                  >
+                    <Edit className="w-4 h-4" /> {t('editOrder')}
+                  </button>
+               )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrderList() {
   const { profile, hasPermission } = useAuth();
   const { t } = useLanguage();
@@ -2638,6 +3335,7 @@ function OrderList() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('active');
   const [areaRequests, setAreaRequests] = useState<AreaRequest[]>([]);
   const [requestingArea, setRequestingArea] = useState(false);
   const [newAreaName, setNewAreaName] = useState('');
@@ -2674,7 +3372,7 @@ function OrderList() {
     e.preventDefault();
     if (!newAreaName.trim()) return;
     try {
-      const formattedArea = newAreaName.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      const formattedArea = newAreaName.trim();
       await addDoc(collection(db, 'area_requests'), {
         workerUid: profile?.uid,
         workerName: profile?.displayName || profile?.email,
@@ -2752,11 +3450,22 @@ function OrderList() {
     }
   };
 
-  const filteredOrders = orders.filter(order => 
-    order.shopName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    order.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    order.shopCode?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch = 
+      order.shopName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.shopCode?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (!matchesSearch) return false;
+
+    if (statusFilter === 'active') {
+      return !['delivered', 'received', 'cancelled', 'in_transport'].includes(order.status);
+    }
+    if (statusFilter === 'all') {
+      return order.status !== 'cancelled';
+    }
+    return order.status === statusFilter;
+  });
 
   return (
     <div className="space-y-8">
@@ -2776,9 +3485,19 @@ function OrderList() {
               className="pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64"
             />
           </div>
-          <button className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">
-            <Filter className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-4 py-2 bg-transparent text-xs font-black uppercase tracking-widest outline-none border-none"
+            >
+              <option value="active">{t('activeOrders') || 'ACTIVE'}</option>
+              <option value="pending">{t('pending')}</option>
+              <option value="in_transport">{t('inTransport')}</option>
+              <option value="delivered">{t('delivered')}</option>
+              <option value="all">{t('all')}</option>
+            </select>
+          </div>
         </div>
       </header>
 
@@ -2874,7 +3593,8 @@ function OrderList() {
             <motion.div
               layout
               key={order.id}
-              className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center gap-6"
+              onClick={() => navigate(`/orders/${order.id}`)}
+              className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center gap-6 cursor-pointer hover:border-blue-200 hover:shadow-md transition-all group"
             >
               <div className="flex-1 space-y-2">
                 <div className="flex items-center gap-3">
@@ -2928,7 +3648,10 @@ function OrderList() {
 
                 {hasPermission('EDIT_ORDER') && (
                   <button
-                    onClick={() => navigate('/new-order', { state: { editOrder: order } })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate('/new-order', { state: { editOrder: order } });
+                    }}
                     className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
                     title={t('editOrder')}
                   >
@@ -2938,15 +3661,18 @@ function OrderList() {
 
                 {hasPermission('MARK_ORDER_RECEIVED') && order.status === 'delivered' && !order.receivedByWorker && (
                   <button
-                    onClick={() => markReceived(order.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      markReceived(order.id);
+                    }}
                     className="flex items-center gap-2 bg-purple-600 text-white font-bold py-2 px-4 rounded-xl hover:bg-purple-700 shadow-lg shadow-purple-200"
                   >
                     <CheckCircle2 className="w-5 h-5" /> {t('markReceived')}
                   </button>
                 )}
 
-                {hasPermission('UPDATE_ORDER_STATUS') && (
-                  <div className="flex items-center gap-2">
+                {hasPermission('UPDATE_ORDER_STATUS') && hasPermission('ACCESS_DELIVERY_EDIT') && (
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={order.status}
                       onChange={(e) => updateStatus(order.id, e.target.value)}
@@ -2958,9 +3684,12 @@ function OrderList() {
                       <option value="cancelled">{t('cancelled')}</option>
                     </select>
                     
-                    {hasPermission('MANAGE_PAYMENTS') && (
+                    {hasPermission('MANAGE_PAYMENTS') && hasPermission('ACCESS_FINANCE_EDIT') && (
                       <button
-                        onClick={() => addPayment(order)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addPayment(order);
+                        }}
                         className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 text-xs font-bold"
                       >
                         {t('addPayment')}
@@ -3027,14 +3756,13 @@ function OrderList() {
 function PermissionManagement() {
   const { t } = useLanguage();
   const { showToast } = useToast();
-  const { rolePermissions, profile } = useAuth();
+  const { rolePermissions, profile, initializeDefaultPermissions, saving: authSaving } = useAuth();
   const [saving, setSaving] = useState<string | null>(null);
 
   const togglePermission = async (role: UserRole, permission: Permission) => {
     if (profile?.role !== 'owner' && profile?.role !== 'admin') return;
     
-    const rolePerm = rolePermissions.find(rp => rp.role === role);
-    if (!rolePerm) return;
+    const rolePerm = rolePermissions.find(rp => rp.role === role) || { role, permissions: [] };
 
     let newPermissions: Permission[];
     if (rolePerm.permissions.includes(permission)) {
@@ -3045,9 +3773,10 @@ function PermissionManagement() {
 
     setSaving(role);
     try {
-      await updateDoc(doc(db, 'role_permissions', role), {
+      await setDoc(doc(db, 'role_permissions', role), {
+        role,
         permissions: newPermissions
-      });
+      }, { merge: true });
       showToast(t('successUpdated'));
     } catch (error) {
       console.error("Permission update error:", error);
@@ -3059,39 +3788,53 @@ function PermissionManagement() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-slate-900 uppercase tracking-tight">{t('permissionManagement')}</h2>
+        <button
+          onClick={initializeDefaultPermissions}
+          disabled={authSaving === 'ALL'}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-black transition-all shadow-lg shadow-slate-200 disabled:opacity-50"
+        >
+          <Database className="w-4 h-4" />
+          {authSaving === 'ALL' ? 'RESETTING...' : 'RESTORE DEFAULTS'}
+        </button>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {rolePermissions.filter(rp => rp.role !== 'owner').map((rp) => (
-          <div key={rp.role} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                <Shield className="w-4 h-4 text-blue-600" />
-                {t(rp.role)}
-              </h3>
-              {saving === rp.role && <span className="text-[10px] font-bold text-blue-600 animate-pulse uppercase">{t('saving')}</span>}
+        {ALL_ROLES.filter(r => r !== 'owner').map((role) => {
+          const rp = rolePermissions.find(p => p.role === role) || { role, permissions: [] };
+          return (
+            <div key={role} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-blue-600" />
+                  {t(role)}
+                </h3>
+                {saving === role && <span className="text-[10px] font-bold text-blue-600 animate-pulse uppercase">{t('saving')}</span>}
+              </div>
+              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {ALL_PERMISSIONS.map((perm) => (
+                  <label 
+                    key={perm} 
+                    className={cn(
+                      "flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer group",
+                      rp.permissions.includes(perm) 
+                        ? "bg-blue-50 border-blue-100 text-blue-700" 
+                        : "bg-white border-slate-100 text-slate-500 hover:border-slate-200"
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={rp.permissions.includes(perm)}
+                      onChange={() => togglePermission(role, perm)}
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-xs font-bold uppercase tracking-tight">{t(perm)}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {ALL_PERMISSIONS.map((perm) => (
-                <label 
-                  key={perm} 
-                  className={cn(
-                    "flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer group",
-                    rp.permissions.includes(perm) 
-                      ? "bg-blue-50 border-blue-100 text-blue-700" 
-                      : "bg-white border-slate-100 text-slate-500 hover:border-slate-200"
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={rp.permissions.includes(perm)}
-                    onChange={() => togglePermission(rp.role, perm)}
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-xs font-bold uppercase tracking-tight">{perm.replace(/_/g, ' ')}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -3102,6 +3845,8 @@ function BrandingSettings() {
   const { showToast } = useToast();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
+  const [grade1Label, setGrade1Label] = useState<string>('Grade 1');
+  const [grade2Label, setGrade2Label] = useState<string>('Grade 2');
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBg, setUploadingBg] = useState(false);
 
@@ -3111,6 +3856,8 @@ function BrandingSettings() {
         const data = doc.data();
         setLogoUrl(data.logoUrl || null);
         setBackgroundUrl(data.backgroundUrl || null);
+        setGrade1Label(data.grade1Label || 'Grade 1');
+        setGrade2Label(data.grade2Label || 'Grade 2');
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/branding_mgmt'));
     return () => unsubscribe();
@@ -3149,6 +3896,39 @@ function BrandingSettings() {
 
   return (
     <div className="space-y-8">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 space-y-6">
+        <div>
+          <h3 className="text-xl font-bold text-slate-900 mb-2 uppercase tracking-tight">Grade Name Customization</h3>
+          <p className="text-slate-500 text-sm">Change how "Grade 1" and "Grade 2" labels appear throughout the app.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Grade 1 Label</label>
+            <input 
+              type="text" 
+              defaultValue={grade1Label} 
+              onBlur={async (e) => {
+                await setDoc(doc(db, 'settings', 'branding'), { grade1Label: e.target.value }, { merge: true });
+                showToast(t('successUpdated'));
+              }}
+              className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Grade 2 Label</label>
+            <input 
+              type="text" 
+              defaultValue={grade2Label} 
+              onBlur={async (e) => {
+                await setDoc(doc(db, 'settings', 'branding'), { grade2Label: e.target.value }, { merge: true });
+                showToast(t('successUpdated'));
+              }}
+              className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 space-y-6">
         <div>
           <h3 className="text-xl font-bold text-slate-900 mb-2 uppercase tracking-tight">{t('logoSettings')}</h3>
@@ -3243,11 +4023,26 @@ function UserManagement() {
   const { t } = useLanguage();
   const { showToast } = useToast();
   const { profile, registerUser, hasPermission } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', password: '', displayName: '', role: 'worker' as UserRole, shopCode: '' });
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'permissions' | 'area_requests' | 'branding'>('users');
+  
+  const initialTab = (searchParams.get('tab') as 'users' | 'permissions' | 'area_requests' | 'branding') || 'users';
+  const [activeTab, setActiveTab] = useState<'users' | 'permissions' | 'area_requests' | 'branding'>(initialTab);
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab') as 'users' | 'permissions' | 'area_requests' | 'branding';
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tab: 'users' | 'permissions' | 'area_requests' | 'branding') => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
   const [editingPermissions, setEditingPermissions] = useState<UserProfile | null>(null);
   const [areaRequests, setAreaRequests] = useState<AreaRequest[]>([]);
   const [requestingArea, setRequestingArea] = useState(false);
@@ -3419,7 +4214,7 @@ function UserManagement() {
         </div>
         <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
           <button
-            onClick={() => setActiveTab('users')}
+            onClick={() => handleTabChange('users')}
             className={cn(
               "px-4 py-2 rounded-lg text-sm font-bold transition-all",
               activeTab === 'users' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
@@ -3429,7 +4224,7 @@ function UserManagement() {
           </button>
           {hasPermission('MANAGE_PERMISSIONS') && (
             <button
-              onClick={() => setActiveTab('permissions')}
+              onClick={() => handleTabChange('permissions')}
               className={cn(
                 "px-4 py-2 rounded-lg text-sm font-bold transition-all",
                 activeTab === 'permissions' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
@@ -3439,7 +4234,7 @@ function UserManagement() {
             </button>
           )}
           <button
-            onClick={() => setActiveTab('area_requests')}
+            onClick={() => handleTabChange('area_requests')}
             className={cn(
               "px-4 py-2 rounded-lg text-sm font-bold transition-all",
               activeTab === 'area_requests' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
@@ -3454,7 +4249,7 @@ function UserManagement() {
           </button>
           {hasPermission('MANAGE_BRANDING') && (
             <button
-              onClick={() => setActiveTab('branding')}
+              onClick={() => handleTabChange('branding')}
               className={cn(
                 "px-4 py-2 rounded-lg text-sm font-bold transition-all",
                 activeTab === 'branding' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
@@ -3464,7 +4259,7 @@ function UserManagement() {
             </button>
           )}
         </div>
-        {hasPermission('MANAGE_USERS') && activeTab === 'users' && (
+        {hasPermission('MANAGE_USERS') && hasPermission('ACCESS_WORKER_EDIT') && activeTab === 'users' && (
           <button
             onClick={() => setIsAdding(true)}
             className="flex items-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200"
@@ -3517,16 +4312,15 @@ function UserManagement() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">{t('role')}</label>
-                <select
-                  value={newUser.role}
-                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value as UserRole })}
-                  className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                >
-                  <option value="admin">{t('admin')}</option>
-                  <option value="manager">{t('manager')}</option>
-                  <option value="worker">{t('worker')}</option>
-                  <option value="shop_owner">{t('shopOwner')}</option>
-                </select>
+                  <select
+                    value={newUser.role}
+                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value as UserRole })}
+                    className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-bold uppercase text-xs"
+                  >
+                    {ALL_ROLES.filter(r => r !== 'owner').map(r => (
+                      <option key={r} value={r}>{t(r)}</option>
+                    ))}
+                  </select>
               </div>
               {newUser.role === 'shop_owner' && (
                 <div className="md:col-span-2">
@@ -3589,16 +4383,15 @@ function UserManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    {hasPermission('MANAGE_PERMISSIONS') ? (
+                    {hasPermission('MANAGE_USER_ROLES') ? (
                       <select
                         value={u.role}
                         onChange={(e) => updateRole(u.uid, e.target.value as UserRole)}
-                        className="text-sm font-medium text-slate-600 bg-transparent border-none focus:ring-0 cursor-pointer hover:text-blue-600"
+                        className="text-sm font-medium text-slate-600 bg-transparent border-none focus:ring-0 cursor-pointer hover:text-blue-600 font-bold uppercase p-0"
                       >
-                        <option value="admin">{t('admin')}</option>
-                        <option value="manager">{t('manager')}</option>
-                        <option value="worker">{t('worker')}</option>
-                        <option value="shop_owner">{t('shopOwner')}</option>
+                        {ALL_ROLES.filter(r => r !== 'owner').map(r => (
+                          <option key={r} value={r}>{t(r)}</option>
+                        ))}
                       </select>
                     ) : (
                       <span className="text-sm font-medium text-slate-600 capitalize">{t(u.role)}</span>
@@ -3748,29 +4541,87 @@ function UserManagement() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {ALL_PERMISSIONS.map((perm) => {
-                  const isCustom = editingPermissions.customPermissions?.includes(perm);
-                  return (
-                    <label
-                      key={perm}
-                      className={cn(
-                        "flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer group",
-                        isCustom
-                          ? "bg-blue-50 border-blue-100 text-blue-700"
-                          : "bg-white border-slate-100 text-slate-500 hover:border-slate-200"
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isCustom}
-                        onChange={() => toggleUserCustomPermission(editingPermissions.uid, perm)}
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-xs font-bold uppercase tracking-tight">{perm.replace(/_/g, ' ')}</span>
-                    </label>
-                  );
-                })}
+              <div className="space-y-6">
+                {/* Granular Activity Limits */}
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4">
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                    <LayoutGrid className="w-4 h-4 text-blue-600" />
+                    Activity Limits (Sectors)
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      { id: 'finance', label: t('finance'), permissions: ['ACCESS_FINANCE_VIEW', 'ACCESS_FINANCE_EDIT'] as Permission[] },
+                      { id: 'delivery', label: t('deliverySector'), permissions: ['ACCESS_DELIVERY_VIEW', 'ACCESS_DELIVERY_EDIT'] as Permission[] },
+                      { id: 'product_shop', label: t('productShopSector'), permissions: ['ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT'] as Permission[] },
+                      { id: 'worker', label: t('workerSector'), permissions: ['ACCESS_WORKER_VIEW', 'ACCESS_WORKER_EDIT'] as Permission[] },
+                    ].map((sector) => {
+                      const hasPartialAccess = sector.permissions.some(p => editingPermissions.customPermissions?.includes(p));
+                      return (
+                        <div key={sector.id} className="p-4 bg-white rounded-xl border border-slate-200">
+                          <label className="flex items-center justify-between cursor-pointer mb-3">
+                            <span className="text-xs font-black uppercase tracking-tight text-slate-700">{sector.label}</span>
+                            <div className={cn(
+                              "w-8 h-4 rounded-full relative transition-colors",
+                              hasPartialAccess ? "bg-blue-600" : "bg-slate-200"
+                            )}>
+                              <div className={cn(
+                                "w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all",
+                                hasPartialAccess ? "left-4.5" : "left-0.5"
+                              )} />
+                            </div>
+                          </label>
+                          <div className="flex gap-2">
+                            {sector.permissions.map(perm => (
+                              <button
+                                key={perm}
+                                onClick={() => toggleUserCustomPermission(editingPermissions.uid, perm)}
+                                className={cn(
+                                  "flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase transition-all",
+                                  editingPermissions.customPermissions?.includes(perm)
+                                    ? "bg-blue-600 text-white shadow-sm"
+                                    : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                                )}
+                              >
+                                {perm.split('_').pop()}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-blue-600" />
+                    Granular Permissions
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {ALL_PERMISSIONS.filter(p => !p.startsWith('ACCESS_')).map((perm) => {
+                      const isCustom = editingPermissions.customPermissions?.includes(perm);
+                      return (
+                        <label
+                          key={perm}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer group",
+                            isCustom
+                              ? "bg-blue-50 border-blue-100 text-blue-700"
+                              : "bg-white border-slate-100 text-slate-500 hover:border-slate-200"
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isCustom}
+                            onChange={() => toggleUserCustomPermission(editingPermissions.uid, perm)}
+                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-xs font-bold uppercase tracking-tight">{t(perm)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <button
@@ -3855,7 +4706,7 @@ function UserManagement() {
 }
 
 function ActivityLog() {
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activities, setActivities] = useState<ActivityType[]>([]);
   const { t } = useLanguage();
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -3864,7 +4715,7 @@ function ActivityLog() {
     if (!profile) return;
     
     const unsubscribe = onSnapshot(query(collection(db, 'activity'), orderBy('timestamp', 'desc')), (snapshot) => {
-      setActivities(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Activity)));
+      setActivities(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ActivityType)));
       setLoading(false);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'activity'));
     return () => unsubscribe();
@@ -3875,8 +4726,8 @@ function ActivityLog() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-3xl font-bold text-slate-900">{t('activityLog')}</h1>
-        <p className="text-slate-500">{t('checkStatus')}</p>
+        <h1 className="text-3xl font-bold text-slate-900 uppercase tracking-tight">{t('activityLog')}</h1>
+        <p className="text-slate-500 font-medium">{t('activityLogSubtitle')}</p>
       </header>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -3936,8 +4787,8 @@ function ShopManagement() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const formattedName = newShop.name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-      const formattedArea = newShop.area.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      const formattedName = newShop.name.trim();
+      const formattedArea = newShop.area.trim();
       
       if (editingCode) {
         await updateDoc(doc(db, 'shops', editingCode), {
@@ -3981,7 +4832,7 @@ function ShopManagement() {
           <p className="label-tech mb-2">{t('shops')}</p>
           <h1 className="text-5xl font-black text-slate-900 uppercase tracking-tighter">{t('shopList')}</h1>
         </div>
-        {hasPermission('MANAGE_SHOPS') && (
+        {hasPermission('MANAGE_SHOPS') && hasPermission('ACCESS_PRODUCT_SHOP_EDIT') && (
           <button
             onClick={() => setIsAdding(true)}
             className="btn-industrial flex items-center gap-2"
@@ -4141,60 +4992,262 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 // --- Pages ---
 
 function Reports() {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const { t } = useLanguage();
-  const { profile, hasPermission } = useAuth();
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!profile) return;
-    const q = query(collection(db, 'orders'));
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setOrders(snapshot.docs.map(d => d.data()));
+      setOrders(snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Order[]);
       setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders'));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'reports_orders'));
     return () => unsubscribe();
   }, [profile]);
 
-  const totalSales = orders.reduce((sum, o) => sum + o.grandTotal, 0);
+  // Data processing for charts
+  const totalSales = orders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
   const totalPaid = orders.reduce((sum, o) => sum + (o.amountPaid || 0), 0);
   const totalDue = orders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
 
+  // Shop Performance Data
+  const shopData = Array.from(new Set(orders.map(o => o.shopName))).map(shopName => {
+    const shopOrders = orders.filter(o => o.shopName === shopName);
+    return {
+      name: shopName,
+      value: shopOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0)
+    };
+  }).sort((a, b) => b.value - a.value).slice(0, 5);
+
+  // Category Breakdown
+  const categoryData: Record<string, number> = {};
+  orders.forEach(order => {
+    order.items.forEach(item => {
+      const cat = item.category || 'General';
+      categoryData[cat] = (categoryData[cat] || 0) + (item.total || 0);
+    });
+  });
+  const pieData = Object.entries(categoryData).map(([name, value]) => ({ name, value }));
+
+  // Sales Trend (Last 7 days/months)
+  const salesTrend = orders.reduce((acc: any, order) => {
+    const date = format(new Date(order.createdAt), 'MMM dd');
+    acc[date] = (acc[date] || 0) + order.grandTotal;
+    return acc;
+  }, {});
+  const trendData = Object.entries(salesTrend).map(([name, value]) => ({ name, value })).reverse().slice(-10);
+
   return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="text-3xl font-bold text-slate-900">{t('salesReports')}</h1>
-        <p className="text-slate-500">{t('financialOverview')}</p>
+    <div className="space-y-8 pb-12">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t('salesReports')}</h1>
+          <p className="text-slate-500 font-medium">{t('financialOverview')}</p>
+        </div>
+        <div className="flex gap-2">
+          <button className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 text-sm font-bold shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            PDF
+          </button>
+          <button className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2">
+            <Filter className="w-4 h-4" />
+            {t('filter')}
+          </button>
+        </div>
       </header>
 
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <p className="text-slate-500 text-sm font-medium">{t('totalSales')}</p>
-          <p className="text-3xl font-bold text-blue-600">৳{totalSales.toFixed(2)}</p>
-        </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <p className="text-slate-500 text-sm font-medium">{t('totalReceived')}</p>
-          <p className="text-3xl font-bold text-emerald-600">৳{totalPaid.toFixed(2)}</p>
-        </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <p className="text-slate-500 text-sm font-medium">{t('totalOutstanding')}</p>
-          <p className="text-3xl font-bold text-red-600">৳{totalDue.toFixed(2)}</p>
-        </div>
+        {[
+          { label: t('totalSales'), value: totalSales, color: 'text-blue-600', bg: 'bg-blue-50', icon: DollarSign },
+          { label: t('totalReceived'), value: totalPaid, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: Wallet },
+          { label: t('totalOutstanding'), value: totalDue, color: 'text-red-600', bg: 'bg-red-50', icon: AlertCircle },
+        ].map((stat) => (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            key={stat.label} 
+            className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-6"
+          >
+            <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", stat.bg, stat.color)}>
+              <stat.icon className="w-7 h-7" />
+            </div>
+            <div>
+              <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">{stat.label}</p>
+              <p className={cn("text-2xl font-black", stat.color)}>৳{stat.value.toLocaleString()}</p>
+            </div>
+          </motion.div>
+        ))}
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <h2 className="text-xl font-bold text-slate-900 mb-6">{t('shopPerformance')}</h2>
-        <div className="space-y-4">
-          {Array.from(new Set(orders.map(o => o.shopName))).map(shopName => {
-            const shopOrders = orders.filter(o => o.shopName === shopName);
-            const shopTotal = shopOrders.reduce((sum, o) => sum + o.grandTotal, 0);
-            return (
-              <div key={shopName} className="flex items-center justify-between p-4 rounded-xl bg-slate-50">
-                <span className="font-bold text-slate-700">{shopName}</span>
-                <span className="font-bold text-blue-600">৳{shopTotal.toFixed(2)}</span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Sales Trend Chart */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <ActivityLogIcon className="w-5 h-5 text-blue-500" />
+              {t('monthlySales')}
+            </h2>
+          </div>
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData}>
+                <defs>
+                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }}
+                  dy={10}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }}
+                  tickFormatter={(val) => `৳${val/1000}k`}
+                />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="value" 
+                  stroke="#3b82f6" 
+                  strokeWidth={3}
+                  fillOpacity={1} 
+                  fill="url(#colorSales)" 
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Category Breakdown (Pie) */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <h2 className="text-lg font-bold text-slate-800 mb-8 flex items-center gap-2">
+            <LayoutGrid className="w-5 h-5 text-emerald-500" />
+            {t('catalog')} {t('details')}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-3">
+              {pieData.map((entry, index) => (
+                <div key={entry.name} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+                    <span className="text-sm font-bold text-slate-600">{entry.name}</span>
+                  </div>
+                  <span className="text-sm font-black text-slate-900">৳{entry.value.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Shop Performance (Donut/Bar mix) */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <h2 className="text-lg font-bold text-slate-800 mb-8 flex items-center gap-2">
+            <Store className="w-5 h-5 text-purple-500" />
+            {t('shopPerformance')}
+          </h2>
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={shopData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" hide />
+                <YAxis 
+                  dataKey="name" 
+                  type="category" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  width={100}
+                  tick={{ fontSize: 11, fill: '#1e293b', fontWeight: 800 }}
+                />
+                <Tooltip 
+                  cursor={{ fill: 'transparent' }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Bar 
+                  dataKey="value" 
+                  radius={[0, 10, 10, 0]}
+                  barSize={20}
+                >
+                  {shopData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Recent Transactions List (Role-Specific) */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <History className="w-5 h-5 text-amber-500" />
+              {t('history')}
+            </h2>
+            <Link to="/history" className="text-blue-600 text-xs font-black uppercase hover:underline">
+              {t('viewPastOrders')}
+            </Link>
+          </div>
+          <div className="space-y-4">
+            {orders.slice(0, 5).map(order => (
+              <div key={order.id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-all cursor-pointer">
+                <div className="flex items-center gap-4">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center",
+                    order.status === 'delivered' ? "bg-emerald-100 text-emerald-600" : "bg-blue-100 text-blue-600"
+                  )}>
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-black text-slate-900 text-sm leading-none mb-1">{order.shopName}</p>
+                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-tight">
+                      {format(new Date(order.createdAt), 'MMM dd, hh:mm a')}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-slate-900 leading-none mb-1">৳{order.grandTotal.toLocaleString()}</p>
+                  <p className={cn(
+                    "text-[10px] font-black uppercase tracking-widest",
+                    order.status === 'delivered' ? "text-emerald-500" : "text-amber-500"
+                  )}>
+                    {t(order.status)}
+                  </p>
+                </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -4213,6 +5266,7 @@ function ProductManagement() {
   const [contactName, setContactName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [uploading, setUploading] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -4248,10 +5302,25 @@ function ProductManagement() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const formattedName = newProduct.name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      const formattedName = newProduct.name.trim();
+      const formattedSizes = newProduct.sizes.split(',').map(s => s.trim()).filter(s => s !== '');
+      
+      // Duplicate protection: Check if same name, grade, and sizes already exists
+      const isDuplicate = products.some(p => 
+        p.id !== editingId &&
+        p.name.toLowerCase() === formattedName.toLowerCase() &&
+        String(p.grade) === String(newProduct.grade) &&
+        JSON.stringify(p.sizes.slice().sort()) === JSON.stringify(formattedSizes.slice().sort())
+      );
+
+      if (isDuplicate) {
+        showToast(t('duplicateProductError') || "Product with same specifications already exists", 'error');
+        return;
+      }
+
       const data = {
         name: formattedName,
-        sizes: newProduct.sizes.split(',').map(s => s.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')).filter(s => s !== ''),
+        sizes: formattedSizes,
         grade: newProduct.grade,
         baseRate: Number(newProduct.baseRate),
         category: newProduct.category || 'General',
@@ -4298,7 +5367,7 @@ function ProductManagement() {
     setNewProduct({
       name: product.name,
       sizes: product.sizes.join(', '),
-      grade: product.grade,
+      grade: String(product.grade) as '1' | '2',
       baseRate: product.baseRate,
       category: product.category || '',
       imageUrl: product.imageUrl || '',
@@ -4306,14 +5375,62 @@ function ProductManagement() {
     });
     setEditingId(product.id);
     setIsAdding(true);
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
+  const seedInitialProducts = async () => {
+    const initialNames = ['Bash Green', 'White', 'Blue', 'Green', 'Maroon'];
+    // For "Black" product details, we'll try to find an existing black product or use defaults
+    const blackProduct = products.find(p => p.name.toLowerCase() === 'black');
+    
+    const sizes = blackProduct?.sizes || PRODUCT_SIZES;
+    const grade = blackProduct?.grade || '1';
+    const baseRate = blackProduct?.baseRate || 500;
+    const category = blackProduct?.category || 'General';
+
+    setUploading(true);
+    try {
+      for (const name of initialNames) {
+        const isDuplicate = products.some(p => 
+          p.name.toLowerCase() === name.toLowerCase() && 
+          String(p.grade) === String(grade)
+        );
+        if (!isDuplicate) {
+          await addDoc(collection(db, 'products'), {
+            name,
+            sizes,
+            grade,
+            baseRate: Number(baseRate),
+            category,
+            imageUrl: '',
+            threeDPictureURL: ''
+          });
+        }
+      }
+      showToast("Initial products added!");
+    } catch (error) {
+      console.error("Seeding error:", error);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm(t('confirmDelete'))) {
+    console.log("Attempting to delete product with ID:", id);
+    if (!id) {
+      showToast("Error: Invalid Product ID", "error");
+      return;
+    }
+    
+    if (window.confirm(t('confirmDelete'))) {
       try {
         await deleteDoc(doc(db, 'products', id));
         showToast(t('successDeleted'));
+        console.log("Delete successful for ID:", id);
       } catch (error) {
+        console.error("Product delete error:", error);
         handleFirestoreError(error, OperationType.DELETE, 'products');
       }
     }
@@ -4339,41 +5456,59 @@ function ProductManagement() {
           <h1 className="text-3xl font-bold text-slate-900">{t('products')}</h1>
           <p className="text-slate-500">{t('manageProducts')}</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={cn(
-                  "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                  selectedCategory === cat
-                    ? "bg-blue-600 text-white shadow-md shadow-blue-100"
-                    : "text-slate-500 hover:bg-slate-50"
-                )}
-              >
-                {cat}
-              </button>
-            ))}
+          <div className="flex items-center gap-4 w-full overflow-hidden relative group">
+            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-50 to-transparent pointer-events-none z-10 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm p-1.5 rounded-2xl border border-slate-200 overflow-x-auto scrollbar-hide no-scrollbar flex-1 pb-1 snap-x">
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={cn(
+                    "px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap snap-start",
+                    selectedCategory === cat
+                      ? "bg-slate-900 text-white shadow-lg shadow-slate-200"
+                      : "text-slate-500 hover:bg-white hover:text-slate-900 border border-transparent hover:border-slate-100"
+                  )}
+                >
+                  {cat === 'All' ? t('all') : cat}
+                </button>
+              ))}
+            </div>
+            {hasPermission('MANAGE_PRODUCTS') && hasPermission('ACCESS_PRODUCT_SHOP_EDIT') && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={seedInitialProducts}
+                  className="flex items-center gap-2 bg-slate-900 text-white font-bold py-2 px-4 rounded-xl hover:bg-black shadow-lg shadow-slate-200"
+                >
+                  <Database className="w-5 h-5" /> {t('seedProducts') || 'Seed'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingId(null);
+                    setNewProduct({ 
+                      name: '', 
+                      sizes: '', 
+                      grade: '1', 
+                      baseRate: 0, 
+                      category: selectedCategory !== 'All' ? selectedCategory : '', 
+                      imageUrl: '', 
+                      threeDPictureURL: '' 
+                    });
+                    setIsAdding(true);
+                  }}
+                  className="flex items-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200"
+                >
+                  <Plus className="w-5 h-5" /> {t('addProduct')}
+                </button>
+              </div>
+            )}
           </div>
-          {hasPermission('MANAGE_PRODUCTS') && (
-            <button
-              onClick={() => {
-                setEditingId(null);
-                setNewProduct({ name: '', sizes: '', grade: '1', baseRate: 0, category: '', imageUrl: '', threeDPictureURL: '' });
-                setIsAdding(true);
-              }}
-              className="flex items-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200"
-            >
-              <Plus className="w-5 h-5" /> {t('addProduct')}
-            </button>
-          )}
-        </div>
       </header>
 
       <AnimatePresence>
         {isAdding && (
           <motion.div
+            ref={formRef}
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
@@ -4390,15 +5525,38 @@ function ProductManagement() {
                   className="w-full p-2 rounded-lg border border-slate-200"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t('category')}</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Interior"
-                  value={newProduct.category}
-                  onChange={e => setNewProduct({ ...newProduct, category: e.target.value })}
-                  className="w-full p-2 rounded-lg border border-slate-200"
-                />
+              <div className="md:col-span-1">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('category')}</label>
+                <div className="relative group">
+                  <select
+                    value={newProduct.category}
+                    onChange={e => {
+                      if (e.target.value === 'NEW') {
+                        setNewProduct({ ...newProduct, category: '' });
+                      } else {
+                        setNewProduct({ ...newProduct, category: e.target.value });
+                      }
+                    }}
+                    className="w-full p-2.5 rounded-xl border-2 border-slate-100 focus:border-blue-600 outline-none appearance-none bg-white text-sm font-bold pr-10"
+                  >
+                    <option value="">Select Category</option>
+                    {categories.filter(c => c !== 'All').map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    <option value="NEW">+ {t('newCategory') || 'New Category'}</option>
+                  </select>
+                  {!newProduct.category && (
+                    <input
+                      type="text"
+                      placeholder="Type New..."
+                      required
+                      value={newProduct.category}
+                      onChange={e => setNewProduct({ ...newProduct, category: e.target.value })}
+                      className="absolute inset-0 w-[calc(100%-40px)] p-2.5 rounded-xl border-none outline-none text-sm font-bold"
+                    />
+                  )}
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t('grade')}</label>
@@ -4498,72 +5656,70 @@ function ProductManagement() {
         )}
       </AnimatePresence>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-          <Phone className="w-5 h-5 text-blue-600" />
-          {t('contactInfo')}
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">{t('contactName')}</label>
-            <input
-              type="text"
-              value={contactName}
-              onChange={(e) => setContactName(e.target.value)}
-              className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-              placeholder="e.g., John Doe"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">{t('contactNumber')}</label>
-            <input
-              type="text"
-              value={contactNumber}
-              onChange={(e) => setContactNumber(e.target.value)}
-              className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-              placeholder="e.g., +880123456789"
-            />
-          </div>
-        </div>
-        <button
-          onClick={handleSaveContact}
-          className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
-        >
-          {t('saveContactInfo')}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {Object.entries(groupedProducts).map(([name, variants]: [string, any]) => (
-          <div key={name} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900">{name}</h3>
-              <span className="text-[10px] font-bold text-slate-400 uppercase">{variants.length} {t('variants')}</span>
-            </div>
-            <div className="divide-y divide-slate-50">
-              {variants.map((v: any) => (
-                <div key={v.id} className="p-4 space-y-3 hover:bg-slate-50/50 transition-colors group">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-bold uppercase">{t('grade')} {v.grade}</span>
-                      <span className="text-sm font-bold text-slate-700">৳{v.baseRate.toFixed(2)}</span>
-                    </div>
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {hasPermission('MANAGE_PRODUCTS') && (
-                        <>
-                          <button onClick={() => startEdit(v)} className="p-1 text-slate-400 hover:text-blue-600"><Settings className="w-4 h-4" /></button>
-                          <button onClick={() => handleDelete(v.id)} className="p-1 text-slate-400 hover:text-red-600"><XCircle className="w-4 h-4" /></button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {v.sizes.map((s: string) => (
-                      <span key={s} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-medium">{s}</span>
-                    ))}
-                  </div>
+          <div key={name} className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden flex flex-col group hover:shadow-2xl hover:shadow-blue-100/50 transition-all duration-500">
+            <div className="p-8 pb-4">
+              <div className="flex justify-between items-start mb-4">
+                <div className="space-y-1">
+                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">{name}</h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                    {variants.length} {t('variants')} • {variants[0]?.category || 'General'}
+                  </p>
                 </div>
-              ))}
+                {variants[0]?.imageUrl && (
+                  <div className="w-16 h-16 rounded-3xl overflow-hidden shadow-lg border-2 border-white ring-1 ring-slate-100">
+                    <img src={variants[0].imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 p-6 pt-0">
+               <div className="grid grid-cols-1 gap-4">
+                 {variants.map((v: any) => (
+                   <div key={v.id} className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 hover:bg-white hover:border-blue-200 hover:shadow-xl hover:shadow-blue-100/20 transition-all duration-300 group/variant relative overflow-hidden">
+                     <div className="flex justify-between items-start mb-4 relative z-10">
+                       <div className="space-y-1">
+                         <div className="flex items-center gap-2">
+                           <span className="px-2 py-0.5 bg-blue-600 text-white rounded text-[8px] font-black uppercase tracking-widest">{t('grade')} {v.grade}</span>
+                           <span className="text-xl font-black text-slate-900 font-mono tracking-tighter">৳{v.baseRate.toFixed(2)}</span>
+                         </div>
+                         <div className="flex flex-wrap gap-1">
+                           {v.sizes.map((s: string) => (
+                             <span key={s} className="px-2.5 py-1 bg-white text-slate-600 rounded-lg text-[9px] font-black uppercase tracking-tight border border-slate-200">
+                               {s}
+                             </span>
+                           ))}
+                         </div>
+                       </div>
+                       <div className="flex gap-2">
+                         {hasPermission('MANAGE_PRODUCTS') && hasPermission('ACCESS_PRODUCT_SHOP_EDIT') && (
+                           <>
+                             <button
+                               onClick={() => startEdit(v)}
+                               className="p-2.5 text-slate-400 hover:text-blue-600 bg-white rounded-xl shadow-sm border border-slate-100 transition-all hover:scale-110 active:scale-95"
+                               title={t('edit')}
+                             >
+                               <Edit className="w-4 h-4" />
+                             </button>
+                             <button
+                               onClick={() => handleDelete(v.id)}
+                               className="p-2.5 text-slate-400 hover:text-red-600 bg-white rounded-xl shadow-sm border border-slate-100 transition-all hover:scale-110 active:scale-95"
+                               title={t('delete')}
+                             >
+                               <Trash2 className="w-4 h-4" />
+                             </button>
+                           </>
+                         )}
+                       </div>
+                     </div>
+                     <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover/variant:opacity-[0.05] transition-opacity">
+                        <Package className="w-24 h-24 rotate-12" />
+                     </div>
+                   </div>
+                 ))}
+               </div>
             </div>
           </div>
         ))}
@@ -5006,6 +6162,62 @@ function ShopOwnerDashboard() {
         ))}
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Collection Distribution Donut */}
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center">
+          <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-8 w-full">{t('paymentStatus')}</h2>
+          <div className="h-64 w-full flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: t('received'), value: stats.collection },
+                    { name: t('due'), value: stats.due }
+                  ]}
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  <Cell fill="#10b981" strokeWidth={0} />
+                  <Cell fill="#ef4444" strokeWidth={0} />
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-4">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('received')}</p>
+                <p className="text-xl font-black text-emerald-600">৳{stats.collection.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('due')}</p>
+                <p className="text-xl font-black text-red-600">৳{stats.due.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Performance mini-chart */}
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 flex flex-col">
+          <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-8">{t('recentOrders')}</h2>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={recentOrders.slice(0, 7).reverse().map(o => ({ name: format(new Date(o.createdAt), 'dd'), value: o.grandTotal }))}>
+                <defs>
+                  <linearGradient id="colorShopSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorShopSales)" />
+                <Tooltip />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 uppercase tracking-tight">
@@ -5315,8 +6527,18 @@ function ProfileSettings() {
   const [displayName, setDisplayName] = useState(profile?.displayName || '');
   const [phoneNumber, setPhoneNumber] = useState(profile?.phoneNumber || '');
   const [photoURL, setPhotoURL] = useState(profile?.photoURL || '');
+  const [accentColor, setAccentColor] = useState(profile?.accentColor || '#2563eb');
   const [updating, setUpdating] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const ACCENT_OPTIONS = [
+    { name: 'Blue', value: '#2563eb' },
+    { name: 'Emerald', value: '#10b981' },
+    { name: 'Indigo', value: '#4f46e5' },
+    { name: 'Purple', value: '#8b5cf6' },
+    { name: 'Crimson', value: '#e11d48' },
+    { name: 'Amber', value: '#f59e0b' },
+  ];
 
   const handleProfilePicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -5351,6 +6573,7 @@ function ProfileSettings() {
         displayName: displayName.trim(),
         phoneNumber: phoneNumber.trim(),
         photoURL: photoURL.trim(),
+        accentColor: accentColor,
         updatedAt: new Date().toISOString()
       });
       showToast(t('successUpdated'));
@@ -5363,43 +6586,65 @@ function ProfileSettings() {
   };
 
   return (
-    <div className="max-w-md mx-auto space-y-8">
+    <div className="max-w-md mx-auto space-y-8 pb-12">
       <header>
-        <h1 className="text-3xl font-bold text-slate-900">{t('profileSettings')}</h1>
-        <p className="text-slate-500">{t('changeName')}</p>
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t('profileSettings')}</h1>
+        <p className="text-slate-500 font-medium">{t('changeName')}</p>
       </header>
 
-      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 space-y-6">
-        <form onSubmit={handleUpdateProfile} className="space-y-4">
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 space-y-8">
+        <form onSubmit={handleUpdateProfile} className="space-y-6">
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">{t('displayName')}</label>
+            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('displayName')}</label>
             <input
               type="text"
               required
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full p-4 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-900"
             />
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">{t('phoneNumber')}</label>
+            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('phoneNumber')}</label>
             <input
               type="tel"
               required
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
-              className="w-full p-4 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-100 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-900"
               placeholder="01XXXXXXXXX"
             />
           </div>
+
+          {/* Accent Color Picker */}
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">{t('image')} URL</label>
+            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Accent Color</label>
+            <div className="grid grid-cols-6 gap-3">
+              {ACCENT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setAccentColor(opt.value)}
+                  className={cn(
+                    "w-full aspect-square rounded-xl transition-all relative flex items-center justify-center",
+                    accentColor === opt.value ? "ring-2 ring-offset-2 ring-slate-900 scale-110" : "hover:scale-105"
+                  )}
+                  style={{ backgroundColor: opt.value }}
+                >
+                  {accentColor === opt.value && <CheckCircle2 className="w-5 h-5 text-white" />}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('image')} URL</label>
             <div className="flex gap-2">
               <input
                 type="url"
                 value={photoURL}
                 onChange={(e) => setPhotoURL(e.target.value)}
-                className="flex-1 p-4 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 p-4 rounded-2xl bg-slate-50 border border-slate-100 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-900"
                 placeholder="https://..."
               />
               <label className={cn(
@@ -5418,10 +6663,12 @@ function ProfileSettings() {
             </div>
             {uploading && <p className="text-[10px] font-bold text-blue-600 mt-1 uppercase tracking-widest animate-pulse">{t('uploading')}</p>}
           </div>
+
           <button
             type="submit"
-            disabled={updating || !displayName.trim() || (displayName === profile?.displayName && phoneNumber === profile?.phoneNumber && photoURL === profile?.photoURL)}
-            className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
+            disabled={updating || !displayName.trim() || (displayName === profile?.displayName && phoneNumber === profile?.phoneNumber && photoURL === profile?.photoURL && accentColor === profile?.accentColor)}
+            className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-black transition-all shadow-xl shadow-slate-100 disabled:opacity-50 disabled:shadow-none"
+            style={{ backgroundColor: accentColor }}
           >
             {updating ? t('settingUp') : t('updateProfile')}
           </button>
@@ -5472,21 +6719,30 @@ function UserHistory() {
 
   const data = groupedData();
 
+  // Chart Data: Sales Trend
+  const chartData = Object.entries(data).map(([key, items]) => ({
+    name: key.length > 10 ? key.substring(0, 3) + ' ' + key.split(' ')[1] : key,
+    sales: items.reduce((sum, i) => sum + i.grandTotal, 0)
+  })).sort((a, b) => {
+    if (view === 'day') return a.name.localeCompare(b.name);
+    return 0; // Default sort is fine for others
+  }).slice(-10);
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-12">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">{t('orderHistory')}</h1>
-          <p className="text-slate-500">{t('viewPastOrders')}</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t('orderHistory')}</h1>
+          <p className="text-slate-500 font-medium">{t('viewPastOrders')}</p>
         </div>
-        <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm self-start">
+        <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm self-start">
           {(['day', 'week', 'month'] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
               className={cn(
-                "px-4 py-2 rounded-lg text-sm font-bold capitalize transition-all",
-                view === v ? "bg-blue-600 text-white shadow-md" : "text-slate-500 hover:text-blue-600"
+                "px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
+                view === v ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-400 hover:text-blue-600"
               )}
             >
               {t(v)}
@@ -5495,7 +6751,44 @@ function UserHistory() {
         </div>
       </header>
 
-      <div className="space-y-6">
+      {/* History Summary Chart */}
+      {orders.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100"
+        >
+          <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-8">{t('performanceOverview')}</h2>
+          <div className="h-48 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 800 }}
+                />
+                <YAxis hide />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                  formatter={(val: number) => [`৳${val.toLocaleString()}`, t('totalSales')]}
+                />
+                <Line 
+                  type="stepAfter" 
+                  dataKey="sales" 
+                  stroke="#3b82f6" 
+                  strokeWidth={4} 
+                  dot={{ r: 4, fill: '#3b82f6', strokeWidth: 0 }}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </motion.div>
+      )}
+
+      <div className="space-y-12">
         {Object.entries(data).length === 0 ? (
           <div className="bg-white p-12 rounded-2xl border border-slate-100 text-center text-slate-400 uppercase font-bold">
             {t('noHistory')}
@@ -5540,10 +6833,40 @@ function UserHistory() {
 // --- App Navigation ---
 
 function AppRoutes() {
-  const { user, profile, loading, hasPermission } = useAuth();
+  const { user, profile, loading, hasPermission, connectionError } = useAuth();
   const { t } = useLanguage();
 
   if (loading) return <LoadingScreen />;
+
+  if (connectionError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-red-100 text-center space-y-6">
+          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-slate-900 leading-tight">Database Connection Error</h2>
+            <p className="text-slate-500 font-medium">{connectionError}</p>
+            <div className="bg-slate-50 p-4 rounded-2xl text-left">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Troubleshooting:</p>
+              <ul className="text-xs text-slate-600 space-y-1 list-disc ml-4">
+                <li>Check your internet connection.</li>
+                <li>Verify your project hasn't reached its Firebase quota.</li>
+                <li>Wait a few moments and try again.</li>
+              </ul>
+            </div>
+          </div>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-black transition-all shadow-lg active:scale-95"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Routes>
@@ -5563,6 +6886,7 @@ function AppRoutes() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/orders" element={<OrderList />} />
+              <Route path="/orders/:id" element={<OrderDetails />} />
               <Route path="/history" element={<UserHistory />} />
               <Route path="/shops/:code" element={<ShopDetails />} />
               <Route path="/catalog" element={<PublicCatalog />} />
@@ -5609,18 +6933,18 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <LanguageProvider>
-        <BrandingProvider>
-          <ToastProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <LanguageProvider>
+          <BrandingProvider>
             <NotificationProvider>
               <Router>
                 <AppRoutes />
               </Router>
             </NotificationProvider>
-          </ToastProvider>
-        </BrandingProvider>
-      </LanguageProvider>
-    </AuthProvider>
+          </BrandingProvider>
+        </LanguageProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }

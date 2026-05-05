@@ -1,4 +1,17 @@
-export type UserRole = 'owner' | 'admin' | 'manager' | 'worker' | 'shop_owner';
+export type UserRole = 
+  | 'owner' 
+  | 'admin' 
+  | 'manager' 
+  | 'worker' 
+  | 'shop_owner' 
+  | 'delivery'
+  | 'worker_foreman'
+  | 'manager_foreman'
+  | 'delivery_manager'
+  | 'field_manager'
+  | 'foreman'
+  | 'delivery_man';
+
 export type UserStatus = 'pending' | 'approved' | 'suspended';
 export type OrderStatus = 'pending' | 'in_transport' | 'delivered' | 'cancelled' | 'received';
 export type PaymentStatus = 'unpaid' | 'partially_paid' | 'paid';
@@ -6,6 +19,7 @@ export type PaymentStatus = 'unpaid' | 'partially_paid' | 'paid';
 export type Permission = 
   | 'MANAGE_USERS' 
   | 'MANAGE_ROLES' 
+  | 'MANAGE_USER_ROLES'
   | 'MANAGE_PERMISSIONS'
   | 'MANAGE_SHOPS' 
   | 'MANAGE_PRODUCTS' 
@@ -24,7 +38,16 @@ export type Permission =
   | 'EDIT_ORDER'
   | 'DELETE_PRODUCT'
   | 'DELETE_SHOP'
-  | 'MANAGE_BRANDING';
+  | 'MANAGE_BRANDING'
+  // Granular Access Permissions
+  | 'ACCESS_FINANCE_VIEW'
+  | 'ACCESS_FINANCE_EDIT'
+  | 'ACCESS_DELIVERY_VIEW'
+  | 'ACCESS_DELIVERY_EDIT'
+  | 'ACCESS_PRODUCT_SHOP_VIEW'
+  | 'ACCESS_PRODUCT_SHOP_EDIT'
+  | 'ACCESS_WORKER_VIEW'
+  | 'ACCESS_WORKER_EDIT';
 
 export interface RolePermissions {
   role: UserRole;
@@ -46,9 +69,10 @@ export interface UserProfile {
   reAccessRequested?: boolean;
   customPermissions?: Permission[]; // For fine-grained user-level overrides
   photoURL?: string;
+  accentColor?: string;
 }
 
-export interface Activity {
+export interface ActivityType {
   id: string;
   uid: string;
   userName: string;
@@ -82,6 +106,8 @@ export interface OrderItem {
   size: string;
   grade: '1' | '2';
   quantity: number;
+  deliveredQuantity?: number;
+  packed?: boolean;
   rate: number;
   total: number;
 }

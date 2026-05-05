@@ -1,0 +1,48 @@
+930:  hasPermission: (permission: Permission) => boolean;
+1032:  const hasPermission = (permission: Permission): boolean => {
+1098:    <AuthContext.Provider value={{ user, profile, loading, signIn, logout, registerUser, hasPermission, rolePermissions }}>
+1451:  const { profile, logout, hasPermission } = useAuth();
+1473:    const hasBasePermission = hasPermission(item.permission as Permission);
+1474:    const hasSectorPermission = item.sector ? hasPermission(item.sector as Permission) : true;
+1700:  const { profile, hasPermission } = useAuth();
+1725:    if (hasPermission('VIEW_REPORTS')) {
+1764:  }, [profile, hasPermission]);
+1777:        {hasPermission('VIEW_REPORTS') && (
+1949:            {hasPermission('CREATE_ORDERS') && (
+1959:            {hasPermission('MANAGE_PRODUCTS') && (
+1965:            {hasPermission('MANAGE_SHOPS') && (
+1979:  const { profile, hasPermission } = useAuth();
+2051:    if (!hasPermission('CREATE_ORDERS')) {
+2128:    if (!hasPermission('CREATE_ORDERS')) {
+2511:  const { profile, hasPermission } = useAuth();
+2583:  const canManagePayments = hasPermission('MANAGE_PAYMENTS');
+2773:  const { profile, hasPermission } = useAuth();
+3068:                {hasPermission('EDIT_ORDER') && (
+3078:                {hasPermission('MARK_ORDER_RECEIVED') && order.status === 'delivered' && !order.receivedByWorker && (
+3087:                {hasPermission('UPDATE_ORDER_STATUS') && (
+3100:                    {hasPermission('MANAGE_PAYMENTS') && (
+3384:  const { profile, registerUser, hasPermission } = useAuth();
+3569:          {hasPermission('MANAGE_PERMISSIONS') && (
+3594:          {hasPermission('MANAGE_BRANDING') && (
+3606:        {hasPermission('MANAGE_USERS') && activeTab === 'users' && (
+3736:                    {hasPermission('MANAGE_USER_ROLES') ? (
+3803:                              {hasPermission('MANAGE_USERS') && (
+3815:                      {hasPermission('MANAGE_PERMISSIONS') && (
+3829:                      {hasPermission('MANAGE_USERS') && (
+4125:  const { profile, hasPermission } = useAuth();
+4191:        {hasPermission('MANAGE_SHOPS') && (
+4269:                {hasPermission('MANAGE_SHOPS') && (
+4616:  const { profile, hasPermission } = useAuth();
+4772:          {hasPermission('MANAGE_PRODUCTS') && (
+4966:                      {hasPermission('MANAGE_PRODUCTS') && (
+5010:  const { profile, hasPermission } = useAuth();
+5263:                            {hasPermission('MANAGE_PRODUCTS') && (
+5272:                            {hasPermission('CREATE_ORDERS') && (
+5361:  const { profile, hasPermission } = useAuth();
+6106:  const { user, profile, loading, hasPermission } = useAuth();
+6140:              {hasPermission('CREATE_ORDERS') && (
+6144:              {hasPermission('MANAGE_PRODUCTS') && (
+6148:              {hasPermission('MANAGE_SHOPS') && (
+6152:              {hasPermission('VIEW_REPORTS') && (
+6156:              {hasPermission('MANAGE_USERS') && (
+6160:              {hasPermission('VIEW_ACTIVITY_LOG') && (
