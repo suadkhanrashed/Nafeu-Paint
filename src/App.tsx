@@ -3886,8 +3886,8 @@ function BrandingSettings() {
       }, { merge: true });
       showToast(t('successUpdated'));
     } catch (error) {
-      console.error("Upload error:", error);
-      showToast(t('logoUploadError'), "error");
+      const userMessage = handleStorageError(error, StorageOperationType.UPLOAD, `branding/${type}`);
+      showToast(userMessage, "error");
     } finally {
       if (type === 'logo') setUploadingLogo(false);
       else setUploadingBg(false);
@@ -4989,6 +4989,44 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+// --- Storage Error Handling ---
+enum StorageOperationType {
+  UPLOAD = 'upload',
+  DOWNLOAD = 'download',
+  DELETE = 'delete',
+}
+
+function handleStorageError(error: unknown, operationType: StorageOperationType, path: string) {
+  const message = error instanceof Error ? error.message : String(error);
+  const code = (error as any)?.code;
+  
+  let userMessage = "Storage operation failed.";
+  
+  if (code === 'storage/retry-limit-exceeded') {
+    userMessage = "Upload connection timed out. This often means Firebase Storage isn't enabled in the Firebase Console or the bucket is unreachable.";
+  } else if (code === 'storage/unauthorized') {
+    userMessage = "Permission denied. Check your Firebase Storage security rules.";
+  } else if (code === 'storage/quota-exceeded') {
+    userMessage = "Storage quota exceeded.";
+  } else if (code === 'storage/invalid-checksum') {
+    userMessage = "File uploaded with an invalid checksum. Please try again.";
+  }
+
+  const errInfo = {
+    error: message,
+    code,
+    operationType,
+    path,
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+    }
+  };
+  
+  console.error("Storage Error:", JSON.stringify(errInfo));
+  return userMessage;
+}
+
 // --- Pages ---
 
 function Reports() {
@@ -5350,14 +5388,15 @@ function ProductManagement() {
 
     setUploading(true);
     try {
-      const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
+      const storagePath = `products/${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, storagePath);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       setNewProduct(prev => ({ ...prev, imageUrl: url }));
       showToast(t('successUploaded'));
     } catch (error) {
-      console.error("Image upload error:", error);
-      showToast(t('errorUploading'), 'error');
+      const userMessage = handleStorageError(error, StorageOperationType.UPLOAD, 'products');
+      showToast(userMessage, 'error');
     } finally {
       setUploading(false);
     }
@@ -6551,14 +6590,15 @@ function ProfileSettings() {
 
     setUploading(true);
     try {
-      const storageRef = ref(storage, `profiles/${user?.uid}_${Date.now()}`);
+      const storagePath = `profiles/${user?.uid}_${Date.now()}`;
+      const storageRef = ref(storage, storagePath);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       setPhotoURL(url);
       showToast(t('successUploaded'));
     } catch (error) {
-      console.error("Profile pic upload error:", error);
-      showToast(t('errorUploading'), 'error');
+      const userMessage = handleStorageError(error, StorageOperationType.UPLOAD, 'profiles');
+      showToast(userMessage, 'error');
     } finally {
       setUploading(false);
     }
