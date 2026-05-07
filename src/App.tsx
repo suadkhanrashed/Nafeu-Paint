@@ -34,7 +34,8 @@ import {
   serverTimestamp,
   arrayUnion,
   getDocFromServer,
-  orderBy
+  orderBy,
+  writeBatch
 } from 'firebase/firestore';
 import { auth, db, storage } from './firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -104,9 +105,11 @@ import {
   TrendingUp,
   UserCircle2,
   Warehouse,
-  Leaf
+  Leaf,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { format } from 'date-fns';
 import { useParams } from 'react-router-dom';
 import { 
@@ -127,7 +130,38 @@ import {
   Area
 } from 'recharts';
 
-const PRODUCT_SIZES = ['1 Pound', '2 Pound', '1/2 Pound', 'Gallon', 'Liter', 'Kiloliter'];
+const PRODUCT_SIZES = ['1/2 Pound', '1 Pound', '2 Pound', 'Gallon', 'Liter', 'Kiloliter'];
+
+/**
+ * Calculates the best text color (black or white) for a given background hex color.
+ */
+function getContrastColor(hexColor: string) {
+  if (!hexColor || !hexColor.startsWith('#')) return '#ffffff';
+  const hex = hexColor.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 128 ? '#0f172a' : '#ffffff'; // slate-900 or white
+}
+
+function getProductBrandingColor(name: string, customColor?: string) {
+  if (customColor) return customColor;
+  
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const colors = [
+    '#2563eb', '#10b981', '#ef4444', '#f59e0b', '#8b5cf6', 
+    '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#6366f1',
+    '#3b82f6', '#059669', '#dc2626', '#d97706', '#7c3aed',
+    '#db2777', '#0891b2', '#ea580c', '#0d9488', '#4f46e5'
+  ];
+  
+  return colors[Math.abs(hash) % colors.length];
+}
 
 const CHART_COLORS = [
   '#2563eb', '#10b981', '#ef4444', '#f59e0b', '#8b5cf6', 
@@ -178,7 +212,6 @@ const translations: Record<Language, Record<string, string>> = {
     manager: "Manager",
     worker: "Worker",
     shop_owner: "Shop Owner",
-    delivery: "Delivery",
     worker_foreman: "Worker Foreman",
     manager_foreman: "Manager Foreman",
     delivery_manager: "Delivery Manager",
@@ -482,7 +515,6 @@ const translations: Record<Language, Record<string, string>> = {
     manager: "ম্যানেজার",
     worker: "কর্মী",
     shop_owner: "দোকানের মালিক",
-    delivery: "ডেলিভারি",
     worker_foreman: "কর্মী ফোরম্যান",
     manager_foreman: "ম্যানেজার ফোরম্যান",
     delivery_manager: "ডেলিভারি ম্যানেজার",
@@ -759,7 +791,7 @@ const translations: Record<Language, Record<string, string>> = {
 };
 
 const ALL_ROLES: UserRole[] = [
-  'owner', 'admin', 'manager', 'worker', 'shop_owner', 'delivery', 
+  'owner', 'admin', 'manager', 'worker', 'shop_owner', 
   'worker_foreman', 'manager_foreman', 'delivery_manager', 'field_manager', 
   'foreman', 'delivery_man'
 ];
@@ -963,14 +995,30 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const markAllAsRead = async () => {
+    try {
+      const batch: Promise<any>[] = [];
+      notifications.filter(n => !n.read).forEach(n => {
+        batch.push(updateDoc(doc(db, 'notifications', n.id), { read: true }));
+      });
+      await Promise.all(batch);
+    } catch (error) {
+      console.error("Mark all as read error:", error);
+    }
+  };
+
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead }}>
+    <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead }}>
       {children}
     </NotificationContext.Provider>
   );
 }
 
-const useNotifications = () => useContext(NotificationContext);
+const useNotifications = () => {
+  const context = useContext(NotificationContext);
+  if (!context) throw new Error('useNotifications must be used within NotificationProvider');
+  return context;
+};
 
 // --- Auth Context ---
 // --- Auth Context ---
@@ -1053,12 +1101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const initializeDefaultPermissions = async () => {
     const defaults: RolePermissions[] = [
-      { role: 'owner', permissions: [...ALL_PERMISSIONS] },
-      { role: 'admin', permissions: [...ALL_PERMISSIONS] },
-      { role: 'manager', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 'VIEW_REPORTS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'MANAGE_PRODUCTS', 'ACCESS_FINANCE_VIEW', 'ACCESS_DELIVERY_VIEW', 'ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT'] },
+      { role: 'owner', permissions: [...ALL_PERMISSIONS, 'MANAGE_PRODUCT_COLORS'] },
+      { role: 'admin', permissions: [...ALL_PERMISSIONS, 'MANAGE_PRODUCT_COLORS'] },
+      { role: 'manager', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 'VIEW_REPORTS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'MANAGE_PRODUCTS', 'ACCESS_FINANCE_VIEW', 'ACCESS_DELIVERY_VIEW', 'ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT', 'MANAGE_PRODUCT_COLORS'] },
       { role: 'worker', permissions: ['CREATE_ORDERS', 'VIEW_ORDERS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS', 'ACCESS_PRODUCT_SHOP_VIEW'] },
       { role: 'shop_owner', permissions: ['VIEW_ORDERS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'VIEW_MY_SHOP', 'ACCESS_PRODUCT_SHOP_VIEW'] },
-      { role: 'delivery', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'VIEW_DASHBOARD', 'ACCESS_DELIVERY_VIEW'] },
       { role: 'foreman', permissions: ['VIEW_ORDERS', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS', 'ACCESS_WORKER_VIEW'] },
       { role: 'delivery_man', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'ACCESS_DELIVERY_VIEW'] },
       { role: 'worker_foreman', permissions: ['CREATE_ORDERS', 'VIEW_ORDERS', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS', 'ACCESS_WORKER_VIEW', 'ACCESS_WORKER_EDIT'] },
@@ -1182,6 +1229,7 @@ function LoginScreen() {
   const { logoUrl } = useBranding();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -1199,21 +1247,21 @@ function LoginScreen() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center space-y-8"
+        className="max-w-md w-full bg-white rounded-3xl shadow-xl p-6 md:p-8 text-center space-y-6 md:space-y-8"
       >
         <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-blue-200 overflow-hidden">
           <img src={logoUrl || "https://ais-dev-2t2xxqjcfxzhtv7w5ldbav-180523243505.asia-southeast1.run.app/api/attachments/a7f5a265-27f9-4674-846f-c1249683935b"} alt="Nafeu Paints" className="w-full h-full object-contain mix-blend-multiply" referrerPolicy="no-referrer" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-1 uppercase tracking-tight">Nafeu Paints</h1>
-          <p className="text-blue-600 font-bold text-sm uppercase tracking-widest">{t('alwaysGreen')}</p>
+          <h1 className="text-2xl md:text-3xl font-black text-slate-900 mb-1 uppercase tracking-tight">Nafeu Paints</h1>
+          <p className="text-blue-600 font-bold text-xs md:text-sm uppercase tracking-widest">{t('alwaysGreen')}</p>
         </div>
         
-        <form onSubmit={handleLogin} className="space-y-4 text-left">
+        <form onSubmit={handleLogin} className="space-y-4 md:space-y-5 text-left">
           {error && (
             <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm font-medium flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
@@ -1221,33 +1269,42 @@ function LoginScreen() {
             </div>
           )}
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">{t('email')}</label>
+            <label className="block text-[8px] md:text-xs font-bold text-slate-500 uppercase mb-1 ml-1 tracking-widest leading-none">{t('email')}</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full p-2.5 md:p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm md:text-base font-bold shadow-sm"
               placeholder="admin@nafeupaints.com"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">{t('password')}</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              placeholder="••••••••"
-            />
+            <label className="block text-[8px] md:text-xs font-bold text-slate-500 uppercase mb-1 ml-1 tracking-widest leading-none">{t('password')}</label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-2.5 md:p-3 pr-12 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm md:text-base font-bold shadow-sm"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4 md:w-5 md:h-5" /> : <Eye className="w-4 h-4 md:w-5 md:h-5" />}
+              </button>
+            </div>
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
+            className="w-full bg-slate-900 text-white font-black py-3 md:py-4 px-4 rounded-xl md:rounded-2xl hover:bg-black transition-all disabled:opacity-50 shadow-xl shadow-slate-200 uppercase tracking-[0.2em] text-[10px] md:text-xs"
           >
-            {loading ? t('settingUp') : t('signIn')}
+            {loading ? (t('settingUp') || t('loggingIn')) : (t('signIn') || t('login'))}
           </button>
 
           <div className="relative">
@@ -1309,17 +1366,17 @@ function RegistrationScreen() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8"
+        className="max-w-md w-full bg-white rounded-3xl shadow-xl p-6 md:p-8 space-y-6"
       >
-        <h2 className="text-2xl font-bold text-slate-900 mb-6 uppercase">{t('completeProfile')}</h2>
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <h2 className="text-xl md:text-2xl font-black text-slate-900 mb-2 uppercase tracking-tight">{t('completeProfile')}</h2>
+        <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2 uppercase">{t('selectRole')}</label>
-            <div className="grid grid-cols-1 gap-3">
+            <label className="block text-[10px] md:text-sm font-black text-slate-400 uppercase mb-2 tracking-widest">{t('selectRole')}</label>
+            <div className="grid grid-cols-1 gap-2 md:gap-3">
               {[
                 { id: 'admin', label: t('admin'), icon: Shield, hidden: user?.email !== "suadkhan.s1.qc@gmail.com" },
                 { id: 'owner', label: t('owner'), icon: Shield, hidden: user?.email !== "suadkhan.s1.qc@gmail.com" },
@@ -1332,21 +1389,20 @@ function RegistrationScreen() {
                 { id: 'foreman', label: t('foreman'), icon: Users },
                 { id: 'delivery_manager', label: t('delivery_manager'), icon: Truck },
                 { id: 'delivery_man', label: t('delivery_man'), icon: Truck },
-                { id: 'delivery', label: t('delivery'), icon: Truck },
               ].filter(r => !r.hidden).map((r) => (
                 <button
                   key={r.id}
                   type="button"
                   onClick={() => setRole(r.id as UserRole)}
                   className={cn(
-                    "flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all",
+                    "flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl border-2 text-left transition-all",
                     role === r.id 
-                      ? "border-blue-600 bg-blue-50 text-blue-700" 
+                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm" 
                       : "border-slate-100 hover:border-slate-200 text-slate-600"
                   )}
                 >
-                  <r.icon className={cn("w-6 h-6", role === r.id ? "text-blue-600" : "text-slate-400")} />
-                  <span className="font-semibold">{r.label}</span>
+                  <r.icon className={cn("w-5 h-5 md:w-6 md:h-6", role === r.id ? "text-blue-600" : "text-slate-400")} />
+                  <span className="font-black uppercase text-[10px] md:text-xs tracking-wide">{r.label}</span>
                 </button>
               ))}
             </div>
@@ -1354,34 +1410,34 @@ function RegistrationScreen() {
 
           {role === 'shop_owner' && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-              <label className="block text-sm font-medium text-slate-700 mb-2 uppercase">{t('shopCode')}</label>
+              <label className="block text-[10px] md:text-sm font-black text-slate-400 uppercase mb-2 tracking-widest">{t('shopCode')}</label>
               <input
                 type="text"
                 required
                 value={shopCode}
                 onChange={(e) => setShopCode(e.target.value.toUpperCase())}
                 placeholder={t('enterUniqueShopCode')}
-                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                className="w-full p-2.5 md:p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm md:text-base font-bold"
               />
             </motion.div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2 uppercase">{t('phoneNumber')}</label>
+            <label className="block text-[10px] md:text-sm font-black text-slate-400 uppercase mb-2 tracking-widest">{t('phoneNumber')}</label>
             <input
               type="tel"
               required
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               placeholder="01XXXXXXXXX"
-              className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full p-2.5 md:p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm md:text-base font-bold"
             />
           </div>
 
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-lg shadow-blue-200"
+            className="w-full bg-slate-900 text-white font-black py-3 md:py-4 px-4 rounded-xl md:rounded-2xl hover:bg-black transition-all disabled:opacity-50 shadow-xl shadow-slate-200 uppercase tracking-[0.2em] text-[10px] md:text-xs"
           >
             {submitting ? t('settingUp') : t('getStarted')}
           </button>
@@ -1516,30 +1572,51 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [usage, setUsage] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('nav_usage');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const trackUsage = (path: string) => {
+    const newUsage = { ...usage, [path]: (usage[path] || 0) + 1 };
+    setUsage(newUsage);
+    localStorage.setItem('nav_usage', JSON.stringify(newUsage));
+  };
+
   const rawNavItems = [
     { label: t('dashboard'), icon: LayoutDashboard, path: '/', permission: 'VIEW_DASHBOARD' as Permission },
     { label: t('newOrder'), icon: PlusCircle, path: '/new-order', permission: 'CREATE_ORDERS' as Permission },
     { label: t('orders'), icon: Package, path: '/orders', permission: 'VIEW_ORDERS' as Permission },
-    { label: t('history'), icon: History, path: '/history', permission: 'VIEW_ORDERS' as Permission },
-    { label: t('explorePaints'), icon: Library, path: '/catalog', permission: 'MANAGE_CATALOG' as Permission },
-    { label: t('manageProducts'), icon: Box, path: '/products', permission: 'MANAGE_PRODUCTS' as Permission, sector: 'ACCESS_PRODUCT_SHOP_VIEW' as Permission },
+    { label: t('products'), icon: Box, path: '/products', permission: 'MANAGE_PRODUCTS' as Permission, sector: 'ACCESS_PRODUCT_SHOP_VIEW' as Permission },
     { label: t('shops'), icon: Store, path: '/shops', permission: 'VIEW_SHOPS' as Permission, sector: 'ACCESS_PRODUCT_SHOP_VIEW' as Permission },
     { label: t('users'), icon: Users, path: '/users', permission: 'MANAGE_USERS' as Permission, sector: 'ACCESS_WORKER_VIEW' as Permission },
     { label: t('activityLog'), icon: ShieldCheck, path: '/activity', permission: 'VIEW_ACTIVITY_LOG' as Permission },
+    { label: t('history'), icon: History, path: '/history', permission: 'VIEW_ORDERS' as Permission },
     { label: t('reports'), icon: BarChart3, path: '/reports', permission: 'VIEW_REPORTS' as Permission, sector: 'ACCESS_FINANCE_VIEW' as Permission },
     { label: t('contacts'), icon: Contact2, path: '/contacts' },
+    { label: t('explorePaints'), icon: Library, path: '/catalog', permission: 'MANAGE_CATALOG' as Permission },
   ];
 
-  let navItems = [...rawNavItems];
+  let baseNavItems = [...rawNavItems];
 
   if (profile?.role === 'shop_owner') {
     if (profile.permissionStatus === 'granted' && profile.shopCode) {
-      navItems.unshift({ label: t('myShop'), icon: Warehouse, path: `/shops/${profile.shopCode}`, permission: 'VIEW_MY_SHOP' as Permission, sector: undefined });
+      baseNavItems.unshift({ label: t('myShop'), icon: Warehouse, path: `/shops/${profile.shopCode}`, permission: 'VIEW_MY_SHOP' as Permission, sector: undefined });
     } else {
-      navItems.unshift({ label: t('shopOwnerDashboard'), icon: LayoutDashboard, path: '/shop-dashboard', permission: 'VIEW_DASHBOARD' as Permission, sector: undefined });
+      baseNavItems.unshift({ label: t('shopOwnerDashboard'), icon: LayoutDashboard, path: '/shop-dashboard', permission: 'VIEW_DASHBOARD' as Permission, sector: undefined });
     }
-    navItems = navItems.filter(item => item.label !== t('dashboard'));
+    baseNavItems = baseNavItems.filter(item => item.label !== t('dashboard'));
   }
+
+  // Most used after Dashboard logic
+  const dashboardItem = baseNavItems.find(i => i.path === '/' || i.path === '/shop-dashboard' || i.path.includes('/shops/'));
+  const others = baseNavItems.filter(i => i !== dashboardItem);
+  const sortedOthers = [...others].sort((a, b) => (usage[b.path] || 0) - (usage[a.path] || 0));
+  const navItems = dashboardItem ? [dashboardItem, ...sortedOthers] : sortedOthers;
 
   const visibleItems = navItems.filter(item => {
     if (item.path === '/profile' || item.path === '/contacts') return !!profile;
@@ -1651,6 +1728,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
                   whileHover={{ x: 6 }}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => {
+                    trackUsage(item.path);
                     navigate(item.path);
                     setIsOpen(false);
                   }}
@@ -1716,9 +1794,15 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
 }
 
 function NotificationBell() {
-  const { notifications, unreadCount, markAsRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && unreadCount > 0) {
+      markAllAsRead();
+    }
+  }, [isOpen, unreadCount, markAllAsRead]);
 
   return (
     <div className="relative">
@@ -1799,21 +1883,21 @@ function MainLayout({ children }: { children: ReactNode }) {
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
       
       <div className="lg:pl-72">
-        <header className="sticky top-0 bg-white/80 backdrop-blur-md border-b-2 border-slate-900 z-30 px-6 lg:px-12 h-20 flex items-center justify-between">
+        <header className="sticky top-0 bg-white/80 backdrop-blur-md border-b-2 border-slate-900 z-30 px-4 md:px-6 lg:px-12 h-16 md:h-20 flex items-center justify-between">
           <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-900">
             <Menu className="w-6 h-6" />
           </button>
           <div className="flex-1" />
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 md:gap-6">
             <NotificationBell />
             <div className="hidden sm:block text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('date')}</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">{t('date')}</p>
               <p className="text-sm font-black text-slate-900 uppercase tracking-tighter">{format(new Date(), 'EEEE, MMM do')}</p>
             </div>
           </div>
         </header>
 
-        <main className="p-6 lg:p-12 max-w-7xl mx-auto">
+        <main className="p-4 md:p-6 lg:p-12 max-w-7xl mx-auto overflow-x-hidden">
           {children}
         </main>
       </div>
@@ -1912,25 +1996,42 @@ function Dashboard() {
         )}
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {[
           { label: t('monthlySales'), value: `৳${stats.monthlySales.toLocaleString()}`, icon: DollarSign, color: 'blue', sector: 'ACCESS_FINANCE_VIEW' },
           { label: t('collection'), value: `৳${stats.collection.toLocaleString()}`, icon: Wallet, color: 'emerald', sector: 'ACCESS_FINANCE_VIEW' },
           { label: t('due'), value: `৳${stats.due.toLocaleString()}`, icon: AlertCircle, color: 'amber', sector: 'ACCESS_FINANCE_VIEW' },
-          { label: t('totalOrders'), value: stats.totalOrders.toString(), icon: Package, color: 'indigo' },
+          { label: t('totalOrders'), value: stats.totalOrders.toString(), icon: Package, color: 'indigo', isTotalOrders: true },
         ].filter(s => s.sector ? hasPermission(s.sector as Permission) : true).map((stat) => (
-          <div key={stat.label} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden group">
+          <div key={stat.label} className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden group">
             <div className={cn(
-              "w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110",
+              "w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center mb-3 md:mb-4 transition-transform group-hover:scale-110",
               stat.color === 'blue' && "bg-blue-50 text-blue-600",
               stat.color === 'amber' && "bg-amber-50 text-amber-600",
               stat.color === 'emerald' && "bg-emerald-50 text-emerald-600",
               stat.color === 'indigo' && "bg-indigo-50 text-indigo-600",
             )}>
-              <stat.icon className="w-6 h-6" />
+              <stat.icon className="w-5 h-5 md:w-6 md:h-6" />
             </div>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-1">{stat.label}</p>
-            <p className="text-2xl font-black text-slate-800 tracking-tight">{stat.value}</p>
+            <p className="text-slate-400 text-[8px] md:text-[10px] font-black uppercase tracking-[0.2em] mb-1">{stat.label}</p>
+            <p className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">{stat.value}</p>
+            
+            {stat.isTotalOrders && (
+              <div className="mt-2 md:mt-3 space-y-1.5">
+                <div className="flex items-center justify-between text-[7px] md:text-[8px] font-black uppercase tracking-widest text-slate-400">
+                  <span>{t('paymentRate') || 'Payment Rate'}</span>
+                  <span className="text-emerald-600">{Math.round((stats.collection / (stats.collection + stats.due || 1)) * 100)}%</span>
+                </div>
+                <div className="w-full h-1 md:h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(stats.collection / (stats.collection + stats.due || 1)) * 100}%` }}
+                    className="h-full bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className={cn(
               "absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-[0.03] transition-transform group-hover:scale-150",
               stat.color === 'blue' && "bg-blue-600",
@@ -2040,26 +2141,26 @@ function Dashboard() {
           </div>
         )}
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-slate-900 uppercase">{t('recentOrders')}</h2>
-            <Link to="/orders" className="text-blue-600 text-sm font-bold hover:underline uppercase">{t('viewDetails')}</Link>
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-4 md:mb-6">
+            <h2 className="text-lg md:text-xl font-bold text-slate-900 uppercase">{t('recentOrders')}</h2>
+            <Link to="/orders" className="text-blue-600 text-[10px] md:text-sm font-bold hover:underline uppercase">{t('viewDetails')}</Link>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3 md:space-y-4">
             {recentOrders.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 uppercase">{t('noOrders')}</div>
+              <div className="p-6 md:p-8 text-center text-slate-400 uppercase text-xs">{t('noOrders')}</div>
             ) : (
               recentOrders.map((order) => (
-                <div key={order.id} className="flex items-center gap-4 p-4 rounded-xl bg-slate-50">
-                  <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                    <Store className="text-slate-400 w-5 h-5" />
+                <div key={order.id} className="flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-slate-50">
+                  <div className="w-8 h-8 md:w-10 md:h-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                    <Store className="text-slate-400 w-4 h-4 md:w-5 md:h-5" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-slate-900">{order.shopName}</p>
-                    <p className="text-xs text-slate-500">{order.items.length} items • ৳{order.grandTotal.toFixed(2)}</p>
+                    <p className="font-bold text-slate-900 text-sm md:text-base">{order.shopName}</p>
+                    <p className="text-[10px] md:text-xs text-slate-500">{order.items.length} items • ৳{order.grandTotal.toFixed(2)}</p>
                   </div>
                   <div className={cn(
-                    "px-3 py-1 rounded-full text-[10px] font-bold uppercase",
+                    "px-2 md:px-3 py-0.5 md:py-1 rounded-full text-[8px] md:text-[10px] font-bold uppercase",
                     order.status === 'delivered' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
                   )}>
                     {order.status}
@@ -2070,29 +2171,29 @@ function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h2 className="text-xl font-bold text-slate-900 mb-6 uppercase">{t('quickActions')}</h2>
-          <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+          <h2 className="text-lg md:text-xl font-bold text-slate-900 mb-4 md:mb-6 uppercase">{t('quickActions')}</h2>
+          <div className="grid grid-cols-2 gap-3 md:gap-4">
             {hasPermission('CREATE_ORDERS') && (
-              <Link to="/new-order" className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
-                <Plus className="w-8 h-8" />
-                <span className="font-bold">{t('newOrder')}</span>
+              <Link to="/new-order" className="flex flex-col items-center gap-2 md:gap-3 p-4 md:p-6 rounded-2xl bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
+                <Plus className="w-6 h-6 md:w-8 md:h-8" />
+                <span className="font-bold text-xs md:text-base">{t('newOrder')}</span>
               </Link>
             )}
-            <Link to="/history" className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
-              <History className="w-8 h-8" />
-              <span className="font-bold">{t('history')}</span>
+            <Link to="/history" className="flex flex-col items-center gap-2 md:gap-3 p-4 md:p-6 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
+              <History className="w-6 h-6 md:w-8 md:h-8" />
+              <span className="font-bold text-xs md:text-base">{t('history')}</span>
             </Link>
             {hasPermission('MANAGE_PRODUCTS') && (
-              <Link to="/products" className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
-                <Package className="w-8 h-8 text-slate-400" />
-                <span className="font-bold">{t('products')}</span>
+              <Link to="/products" className="flex flex-col items-center gap-2 md:gap-3 p-4 md:p-6 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
+                <Package className="w-6 h-6 md:w-8 md:h-8 text-slate-400" />
+                <span className="font-bold text-xs md:text-base">{t('products')}</span>
               </Link>
             )}
             {hasPermission('MANAGE_SHOPS') && (
-              <Link to="/shops" className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
-                <Store className="w-8 h-8 text-slate-400" />
-                <span className="font-bold">{t('shops')}</span>
+              <Link to="/shops" className="flex flex-col items-center gap-2 md:gap-3 p-4 md:p-6 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">
+                <Store className="w-6 h-6 md:w-8 md:h-8 text-slate-400" />
+                <span className="font-bold text-xs md:text-base">{t('shops')}</span>
               </Link>
             )}
           </div>
@@ -4798,8 +4899,9 @@ function ShopManagement() {
         showToast(t('successUpdated'));
       } else {
         const areaShort = formattedArea.substring(0, 3).toUpperCase().replace(/\s+/g, '');
-        const nextNumber = 101 + shops.length;
-        const generatedCode = `${areaShort}-${nextNumber}`;
+        // Improved 6-char unique code generation
+        const randomStr = Math.random().toString(36).substring(2, 5).toUpperCase();
+        const generatedCode = `${areaShort}${randomStr}`.substring(0, 6);
 
         await setDoc(doc(db, 'shops', generatedCode), {
           ...newShop,
@@ -4824,6 +4926,13 @@ function ShopManagement() {
     setEditingCode(shop.code);
     setIsAdding(true);
   };
+
+  // Group shops by area
+  const groupedShops = shops.reduce((acc: any, shop) => {
+    if (!acc[shop.area]) acc[shop.area] = [];
+    acc[shop.area].push(shop);
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-12">
@@ -4893,45 +5002,75 @@ function ShopManagement() {
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 grid-structure">
-        {shops.map((shop) => (
-          <div key={shop.code} className="grid-cell group hover:bg-slate-50 transition-all flex flex-col justify-between min-h-[240px]">
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div className="w-12 h-12 border-2 border-slate-900 flex items-center justify-center">
-                  <Store className="w-6 h-6" />
-                </div>
-                <span className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest">CODE: {shop.code}</span>
+      <div className="space-y-12">
+        {Object.entries(groupedShops)
+          .sort(([areaA], [areaB]) => {
+            const countA = profile?.areaInteractions?.[areaA] || 0;
+            const countB = profile?.areaInteractions?.[areaB] || 0;
+            if (countA !== countB) return countB - countA;
+            return areaA.localeCompare(areaB);
+          })
+          .map(([area, areaShops]: [string, any]) => (
+            <div key={area} className="space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="h-8 w-1.5 bg-slate-900 rounded-full" />
+                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
+                  {area}
+                  <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">
+                    {areaShops.length}
+                  </span>
+                </h2>
               </div>
-              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">{shop.name}</h3>
-              <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 mt-2">
-                <Search className="w-3 h-3" /> {shop.area}
-              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 grid-structure">
+                {areaShops.map((shop: any) => (
+                  <div key={shop.code} className="grid-cell group hover:bg-slate-50 transition-all flex flex-col justify-between min-h-[240px]">
+                    <div>
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="w-12 h-12 border-2 border-slate-900 flex items-center justify-center">
+                          <Store className="w-6 h-6" />
+                        </div>
+                        <span className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest">CODE: {shop.code}</span>
+                      </div>
+                      <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">{shop.name}</h3>
+                      <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 mt-2">
+                        <MapPin className="w-3 h-3 text-slate-400" /> {shop.area}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-100">
+                      <div className="flex gap-2">
+                        {hasPermission('MANAGE_SHOPS') && (
+                          <button
+                            onClick={() => startEdit(shop)}
+                            className="w-10 h-10 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-900 hover:border-slate-900 transition-all"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        )}
+                        <Link 
+                          to={`/shops/${shop.code}`}
+                          onClick={async () => {
+                            if (profile) {
+                              const currentCount = profile.areaInteractions?.[shop.area] || 0;
+                              await updateDoc(doc(db, 'user_profiles', profile.uid), {
+                                [`areaInteractions.${shop.area}`]: currentCount + 1
+                              });
+                            }
+                          }}
+                          className="w-10 h-10 bg-slate-900 text-white flex items-center justify-center hover:bg-blue-600 transition-all"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </Link>
+                      </div>
+                      <div className="text-right">
+                        <p className="label-tech">{t('dueAmount')}</p>
+                        <p className="text-xl font-black text-red-600 data-mono">৳{(shop.totalDue || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-100">
-              <div className="flex gap-2">
-                {hasPermission('MANAGE_SHOPS') && (
-                  <button
-                    onClick={() => startEdit(shop)}
-                    className="w-10 h-10 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-900 hover:border-slate-900 transition-all"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                )}
-                <Link 
-                  to={`/shops/${shop.code}`}
-                  className="w-10 h-10 bg-slate-900 text-white flex items-center justify-center hover:bg-blue-600 transition-all"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Link>
-              </div>
-              <div className="text-right">
-                <p className="label-tech">{t('dueAmount')}</p>
-                <p className="text-xl font-black text-red-600 data-mono">৳{(shop.totalDue || 0).toLocaleString()}</p>
-              </div>
-            </div>
-          </div>
-        ))}
+          ))}
       </div>
     </div>
   );
@@ -5300,11 +5439,23 @@ function ProductManagement() {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [newProduct, setNewProduct] = useState({ name: '', sizes: '', grade: '1' as '1' | '2', baseRate: 0, category: '', imageUrl: '', threeDPictureURL: '' });
+  const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newProduct, setNewProduct] = useState({ name: '', sizes: '', grade: '1' as '1' | '2', baseRate: 0, category: '', imageUrl: '', threeDPictureURL: '', customColor: '#2563eb' });
   const [contactName, setContactName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const formRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const unsubCategories = onSnapshot(doc(db, 'settings', 'categories'), (doc) => {
+      if (doc.exists()) {
+        setCategoryOrder(doc.data().order || []);
+      }
+    }, (error) => console.error("Category order fetch error:", error));
+    return () => unsubCategories();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -5337,6 +5488,29 @@ function ProductManagement() {
     }
   };
 
+  const handleUpdateBrandingColor = async (name: string, color: string) => {
+    try {
+      const productsToUpdate = products.filter(p => p.name === name);
+      const batch = writeBatch(db);
+      productsToUpdate.forEach(p => {
+        batch.update(doc(db, 'products', p.id), { customColor: color });
+      });
+      await batch.commit();
+      showToast(t('successUpdated'));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'products');
+    }
+  };
+
+  const handleReorderCategories = async (newOrder: string[]) => {
+    setCategoryOrder(newOrder);
+    try {
+      await setDoc(doc(db, 'settings', 'categories'), { order: newOrder });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/categories');
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -5363,7 +5537,8 @@ function ProductManagement() {
         baseRate: Number(newProduct.baseRate),
         category: newProduct.category || 'General',
         imageUrl: newProduct.imageUrl || '',
-        threeDPictureURL: newProduct.threeDPictureURL || ''
+        threeDPictureURL: newProduct.threeDPictureURL || '',
+        customColor: newProduct.customColor || '#2563eb'
       };
 
       if (editingId) {
@@ -5374,8 +5549,9 @@ function ProductManagement() {
         showToast(t('successAdded'));
       }
       
-      setNewProduct({ name: '', sizes: '', grade: '1', baseRate: 0, category: '', imageUrl: '', threeDPictureURL: '' });
+      setNewProduct({ name: '', sizes: '', grade: '1', baseRate: 0, category: '', imageUrl: '', threeDPictureURL: '', customColor: '#2563eb' });
       setIsAdding(false);
+      setIsAddingCategory(false);
       setEditingId(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'products');
@@ -5410,7 +5586,8 @@ function ProductManagement() {
       baseRate: product.baseRate,
       category: product.category || '',
       imageUrl: product.imageUrl || '',
-      threeDPictureURL: product.threeDPictureURL || ''
+      threeDPictureURL: product.threeDPictureURL || '',
+      customColor: product.customColor || '#2563eb'
     });
     setEditingId(product.id);
     setIsAdding(true);
@@ -5476,7 +5653,12 @@ function ProductManagement() {
   };
 
   // Group products by name
-  const categories = ['All', ...new Set(products.map(p => p.category || 'General'))];
+  const derivedCategories = [...new Set(products.map(p => p.category || 'General'))];
+  const reorderableCategories = [
+    ...categoryOrder.filter(c => derivedCategories.includes(c)),
+    ...derivedCategories.filter(c => !categoryOrder.includes(c))
+  ];
+  const categories = ['All', ...reorderableCategories];
   
   const filteredProducts = selectedCategory === 'All' 
     ? products 
@@ -5485,64 +5667,139 @@ function ProductManagement() {
   const groupedProducts = filteredProducts.reduce((acc: any, p) => {
     if (!acc[p.name]) acc[p.name] = [];
     acc[p.name].push(p);
+    
+    // Sort variants by grade (1 first, then 2) and then by size (using PRODUCT_SIZES order)
+    acc[p.name].sort((a: any, b: any) => {
+      if (a.grade !== b.grade) {
+        return Number(a.grade) - Number(b.grade);
+      }
+      // Then sort by size index in PRODUCT_SIZES
+      const sizeA = a.sizes[0] || '';
+      const sizeB = b.sizes[0] || '';
+      const indexA = PRODUCT_SIZES.indexOf(sizeA);
+      const indexB = PRODUCT_SIZES.indexOf(sizeB);
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      return sizeA.localeCompare(sizeB);
+    });
+    
     return acc;
   }, {});
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 md:space-y-8">
+      {/* Row 1: Title and Stats */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">{t('products')}</h1>
-          <p className="text-slate-500">{t('manageProducts')}</p>
+          <h1 className="text-2xl md:text-5xl font-black text-slate-900 uppercase tracking-tight leading-none">{t('productManagement') || t('products')}</h1>
+          <p className="text-slate-500 text-[10px] md:text-xs font-black uppercase tracking-[0.3em] mt-2 opacity-70">
+            {products.length} {t('totalProducts')} • {reorderableCategories.length} {t('categories')}
+          </p>
         </div>
-          <div className="flex items-center gap-4 w-full overflow-hidden relative group">
-            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-50 to-transparent pointer-events-none z-10 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm p-1.5 rounded-2xl border border-slate-200 overflow-x-auto scrollbar-hide no-scrollbar flex-1 pb-1 snap-x">
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={cn(
-                    "px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap snap-start",
-                    selectedCategory === cat
-                      ? "bg-slate-900 text-white shadow-lg shadow-slate-200"
-                      : "text-slate-500 hover:bg-white hover:text-slate-900 border border-transparent hover:border-slate-100"
-                  )}
-                >
-                  {cat === 'All' ? t('all') : cat}
-                </button>
-              ))}
+        
+        {/* Row 2: Consolidated Action Buttons (Desktop can stay here, Mobile will stack) */}
+        <div className="flex flex-wrap items-center gap-2 md:gap-2.5">
+          {hasPermission('MANAGE_PRODUCTS') && hasPermission('ACCESS_PRODUCT_SHOP_EDIT') && (
+            <div className="flex items-center gap-1.5 md:gap-2 bg-slate-100 p-1 rounded-xl md:rounded-2xl border border-slate-200/50">
+              <button
+                onClick={seedInitialProducts}
+                className="flex items-center gap-1.5 bg-white text-slate-600 font-black py-2 md:py-2 px-4 md:px-5 rounded-lg md:rounded-xl border border-transparent hover:border-slate-200 transition-all text-[9px] md:text-[10px] uppercase tracking-[0.2em] whitespace-nowrap shadow-sm"
+              >
+                <Database className="w-3.5 h-3.5" /> <span>{t('seedProducts') || 'Seed'}</span>
+              </button>
+              <button 
+                onClick={() => {
+                  setEditingId(null);
+                  setNewProduct({ 
+                    name: '', 
+                    sizes: '', 
+                    grade: '1', 
+                    baseRate: 0, 
+                    category: selectedCategory !== 'All' ? selectedCategory : '', 
+                    imageUrl: '', 
+                    threeDPictureURL: '',
+                    customColor: '#2563eb'
+                  });
+                  setIsAddingCategory(false);
+                  setIsAdding(true);
+                }}
+                disabled={isAdding}
+                className={cn(
+                  "flex items-center gap-1.5 font-black py-2 md:py-2 px-4 md:px-5 rounded-lg md:rounded-xl transition-all text-[9px] md:text-[10px] uppercase tracking-[0.2em] whitespace-nowrap",
+                  isAdding 
+                    ? "bg-slate-200 text-slate-400 cursor-not-allowed" 
+                    : "bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-900/10"
+                )}
+              >
+                <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                <span>{t('addProduct')}</span>
+              </button>
             </div>
-            {hasPermission('MANAGE_PRODUCTS') && hasPermission('ACCESS_PRODUCT_SHOP_EDIT') && (
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={seedInitialProducts}
-                  className="flex items-center gap-2 bg-slate-900 text-white font-bold py-2 px-4 rounded-xl hover:bg-black shadow-lg shadow-slate-200"
+          )}
+        </div>
+      </div>
+
+      {/* Row 3: Categories - Dedicated visible row */}
+      <div className="bg-slate-100 p-1.5 md:p-2 rounded-2xl md:rounded-[2.5rem] border border-slate-200/50">
+        <div className="flex items-center gap-3 w-full relative">
+          <div className="flex items-center gap-1 md:gap-1.5 overflow-x-auto scrollbar-hide no-scrollbar flex-1 py-0.5 px-0.5 snap-x scroll-smooth">
+            <button
+              onClick={() => setSelectedCategory('All')}
+              className={cn(
+                "px-4 md:px-6 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap snap-start relative overflow-hidden flex items-center justify-center min-w-[70px] md:min-w-[100px]",
+                selectedCategory === 'All' 
+                  ? "text-white shadow-lg shadow-slate-900/20" 
+                  : "text-slate-500 hover:text-slate-800 hover:bg-white bg-white/40 border border-transparent hover:border-slate-200"
+              )}
+            >
+              {selectedCategory === 'All' && (
+                <motion.div
+                  layoutId="activeCategory"
+                  className="absolute inset-0 bg-slate-900"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                />
+              )}
+              <span className="relative z-10">{t('all')}</span>
+            </button>
+
+            <Reorder.Group 
+              axis="x" 
+              values={reorderableCategories} 
+              onReorder={handleReorderCategories}
+              className="flex items-center gap-1 md:gap-1.5"
+            >
+              {reorderableCategories.map(cat => (
+                <Reorder.Item
+                  key={cat}
+                  value={cat}
+                  className="relative cursor-grab active:cursor-grabbing snap-start"
                 >
-                  <Database className="w-5 h-5" /> {t('seedProducts') || 'Seed'}
-                </button>
-                <button
-                  onClick={() => {
-                    setEditingId(null);
-                    setNewProduct({ 
-                      name: '', 
-                      sizes: '', 
-                      grade: '1', 
-                      baseRate: 0, 
-                      category: selectedCategory !== 'All' ? selectedCategory : '', 
-                      imageUrl: '', 
-                      threeDPictureURL: '' 
-                    });
-                    setIsAdding(true);
-                  }}
-                  className="flex items-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200"
-                >
-                  <Plus className="w-5 h-5" /> {t('addProduct')}
-                </button>
-              </div>
-            )}
+                  <button
+                    onClick={() => setSelectedCategory(cat)}
+                    className={cn(
+                      "px-4 md:px-6 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap relative overflow-hidden flex items-center justify-center min-w-[70px] md:min-w-[100px]",
+                      selectedCategory === cat 
+                        ? "text-white shadow-lg shadow-slate-900/20" 
+                        : "text-slate-500 hover:text-slate-800 hover:bg-white bg-white/40 border border-transparent hover:border-slate-200"
+                    )}
+                  >
+                    {selectedCategory === cat && (
+                      <motion.div
+                        layoutId="activeCategory"
+                        className="absolute inset-0 bg-slate-900"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                      />
+                    )}
+                    <span className="relative z-10">{cat}</span>
+                  </button>
+                </Reorder.Item>
+              ))}
+            </Reorder.Group>
           </div>
-      </header>
+        </div>
+      </div>
+
 
       <AnimatePresence>
         {isAdding && (
@@ -5567,34 +5824,49 @@ function ProductManagement() {
               <div className="md:col-span-1">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('category')}</label>
                 <div className="relative group">
-                  <select
-                    value={newProduct.category}
-                    onChange={e => {
-                      if (e.target.value === 'NEW') {
-                        setNewProduct({ ...newProduct, category: '' });
-                      } else {
-                        setNewProduct({ ...newProduct, category: e.target.value });
-                      }
-                    }}
-                    className="w-full p-2.5 rounded-xl border-2 border-slate-100 focus:border-blue-600 outline-none appearance-none bg-white text-sm font-bold pr-10"
-                  >
-                    <option value="">Select Category</option>
-                    {categories.filter(c => c !== 'All').map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                    <option value="NEW">+ {t('newCategory') || 'New Category'}</option>
-                  </select>
-                  {!newProduct.category && (
-                    <input
-                      type="text"
-                      placeholder="Type New..."
-                      required
-                      value={newProduct.category}
-                      onChange={e => setNewProduct({ ...newProduct, category: e.target.value })}
-                      className="absolute inset-0 w-[calc(100%-40px)] p-2.5 rounded-xl border-none outline-none text-sm font-bold"
-                    />
+                  {isAddingCategory ? (
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        placeholder={t('typeNewCategory') || "Type category..."}
+                        required
+                        autoFocus
+                        value={newProduct.category}
+                        onChange={e => setNewProduct({ ...newProduct, category: e.target.value })}
+                        className="w-full p-2 rounded-lg border border-slate-200 outline-none text-sm font-bold pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingCategory(false)}
+                        className="absolute right-2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                        title={t('back') || "Back"}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <select
+                        value={newProduct.category}
+                        onChange={e => {
+                          if (e.target.value === 'NEW') {
+                            setNewProduct({ ...newProduct, category: '' });
+                            setIsAddingCategory(true);
+                          } else {
+                            setNewProduct({ ...newProduct, category: e.target.value });
+                          }
+                        }}
+                        className="w-full p-2 rounded-lg border border-slate-200 outline-none appearance-none bg-white text-sm font-bold pr-10"
+                      >
+                        <option value="">Select Category</option>
+                        {categories.filter(c => c !== 'All').map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                        <option value="NEW">+ {t('newCategory') || 'New Category'}</option>
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                    </div>
                   )}
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
               </div>
               <div>
@@ -5640,10 +5912,29 @@ function ProductManagement() {
                   className="w-full p-2 rounded-lg border border-slate-200"
                 />
               </div>
+              {hasPermission('MANAGE_PRODUCT_COLORS') && (
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t('accentColor') || 'Color'}</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={newProduct.customColor}
+                      onChange={e => setNewProduct({ ...newProduct, customColor: e.target.value })}
+                      className="w-10 h-10 rounded-lg p-0 border-none cursor-pointer"
+                    />
+                    <input 
+                      type="text" 
+                      value={newProduct.customColor} 
+                      onChange={e => setNewProduct({ ...newProduct, customColor: e.target.value })}
+                      className="flex-1 p-2 rounded-lg border border-slate-200 text-[10px] font-mono"
+                    />
+                  </div>
+                </div>
+              )}
               <div className="md:col-span-1">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t('size')}</label>
                 <div className="flex flex-wrap gap-1 mb-1">
-                  {PRODUCT_SIZES.slice(0, 3).map(size => (
+                  {PRODUCT_SIZES.slice(0, 4).map(size => (
                     <button
                       key={size}
                       type="button"
@@ -5683,7 +5974,7 @@ function ProductManagement() {
                   onClick={() => {
                     setIsAdding(false);
                     setEditingId(null);
-                    setNewProduct({ name: '', sizes: '', grade: '1', baseRate: 0, category: '', imageUrl: '', threeDPictureURL: '' });
+                    setNewProduct({ name: '', sizes: '', grade: '1', baseRate: 0, category: '', imageUrl: '', threeDPictureURL: '', customColor: '#2563eb' });
                   }} 
                   className="flex-1 bg-slate-100 text-slate-600 font-bold py-2 rounded-lg"
                 >
@@ -5696,73 +5987,205 @@ function ProductManagement() {
       </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {Object.entries(groupedProducts).map(([name, variants]: [string, any]) => (
-          <div key={name} className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden flex flex-col group hover:shadow-2xl hover:shadow-blue-100/50 transition-all duration-500">
-            <div className="p-8 pb-4">
-              <div className="flex justify-between items-start mb-4">
-                <div className="space-y-1">
-                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">{name}</h3>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                    {variants.length} {t('variants')} • {variants[0]?.category || 'General'}
-                  </p>
-                </div>
-                {variants[0]?.imageUrl && (
-                  <div className="w-16 h-16 rounded-3xl overflow-hidden shadow-lg border-2 border-white ring-1 ring-slate-100">
-                    <img src={variants[0].imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  </div>
-                )}
-              </div>
-            </div>
+        {Object.entries(groupedProducts).map(([name, variants]: [string, any]) => {
+          const mainProduct = variants[0];
+          const isExpanded = expandedProduct === name;
+          const customColor = getProductBrandingColor(name, mainProduct.customColor);
+          const contrastColor = getContrastColor(customColor);
 
-            <div className="flex-1 p-6 pt-0">
-               <div className="grid grid-cols-1 gap-4">
-                 {variants.map((v: any) => (
-                   <div key={v.id} className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 hover:bg-white hover:border-blue-200 hover:shadow-xl hover:shadow-blue-100/20 transition-all duration-300 group/variant relative overflow-hidden">
-                     <div className="flex justify-between items-start mb-4 relative z-10">
-                       <div className="space-y-1">
-                         <div className="flex items-center gap-2">
-                           <span className="px-2 py-0.5 bg-blue-600 text-white rounded text-[8px] font-black uppercase tracking-widest">{t('grade')} {v.grade}</span>
-                           <span className="text-xl font-black text-slate-900 font-mono tracking-tighter">৳{v.baseRate.toFixed(2)}</span>
-                         </div>
-                         <div className="flex flex-wrap gap-1">
-                           {v.sizes.map((s: string) => (
-                             <span key={s} className="px-2.5 py-1 bg-white text-slate-600 rounded-lg text-[9px] font-black uppercase tracking-tight border border-slate-200">
-                               {s}
-                             </span>
-                           ))}
-                         </div>
-                       </div>
-                       <div className="flex gap-2">
-                         {hasPermission('MANAGE_PRODUCTS') && hasPermission('ACCESS_PRODUCT_SHOP_EDIT') && (
-                           <>
-                             <button
-                               onClick={() => startEdit(v)}
-                               className="p-2.5 text-slate-400 hover:text-blue-600 bg-white rounded-xl shadow-sm border border-slate-100 transition-all hover:scale-110 active:scale-95"
-                               title={t('edit')}
-                             >
-                               <Edit className="w-4 h-4" />
-                             </button>
-                             <button
-                               onClick={() => handleDelete(v.id)}
-                               className="p-2.5 text-slate-400 hover:text-red-600 bg-white rounded-xl shadow-sm border border-slate-100 transition-all hover:scale-110 active:scale-95"
-                               title={t('delete')}
-                             >
-                               <Trash2 className="w-4 h-4" />
-                             </button>
-                           </>
-                         )}
-                       </div>
-                     </div>
-                     <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover/variant:opacity-[0.05] transition-opacity">
-                        <Package className="w-24 h-24 rotate-12" />
-                     </div>
-                   </div>
-                 ))}
-               </div>
-            </div>
-          </div>
-        ))}
+          return (
+            <motion.div 
+              key={name} 
+              layout
+              className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden flex flex-col group hover:shadow-2xl hover:shadow-blue-100/50 transition-all duration-500 relative"
+            >
+              <div className="p-8 pb-4">
+                <div 
+                  className="p-6 rounded-[2rem] transition-all duration-300 shadow-lg relative overflow-hidden mb-6"
+                  style={{ backgroundColor: customColor, color: contrastColor }}
+                >
+                  <div className="flex justify-between items-start relative z-10">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-xl font-black uppercase tracking-tight">{name}</h3>
+                        {hasPermission('MANAGE_PRODUCT_COLORS') && (
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={customColor}
+                              onChange={(e) => handleUpdateBrandingColor(name, e.target.value)}
+                              className="w-6 h-6 rounded-full border-2 border-white/50 shadow-sm cursor-pointer appearance-none bg-transparent"
+                              title="Edit Branding Color"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">
+                        {variants.length} {t('variants')} • {mainProduct.category || 'General'}
+                      </p>
+                    </div>
+                    {mainProduct.imageUrl && (
+                      <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-xl border-2 border-white/30 backdrop-blur-sm shrink-0">
+                        <img src={mainProduct.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                    )}
+                  </div>
+                  {/* Subtle background decoration */}
+                  <div className="absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute bottom-0 left-0 w-24 h-24 -ml-12 -mb-12 bg-black/5 rounded-full blur-2xl pointer-events-none" />
+                </div>
+                
+                <button
+                  onClick={() => setExpandedProduct(name)}
+                  className="w-full py-3 px-6 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest flex items-center justify-between transition-colors mb-2"
+                >
+                  {t('viewDetails') || 'View Details'}
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
+
+      {/* Product Details Modal */}
+      <AnimatePresence>
+        {expandedProduct && (
+          <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-8">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setExpandedProduct(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm cursor-pointer"
+            />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 100 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 100 }}
+              className="relative w-full max-w-2xl bg-white rounded-t-[2rem] md:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] md:max-h-[90vh]"
+            >
+              {(() => {
+                const variants = groupedProducts[expandedProduct];
+                if (!variants) return null;
+                const mainProduct = variants[0];
+                const customColor = getProductBrandingColor(expandedProduct, mainProduct.customColor);
+                const contrastColor = getContrastColor(customColor);
+
+                return (
+                  <>
+                    {/* Modal Header */}
+                    <div className="p-4 md:p-8 pb-0 shrink-0">
+                      <div 
+                        className="p-5 md:p-8 rounded-2xl md:rounded-[2rem] shadow-xl relative overflow-hidden mb-4 md:mb-6"
+                        style={{ backgroundColor: customColor, color: contrastColor }}
+                      >
+                        <div className="flex justify-between items-start relative z-10">
+                          <div className="space-y-2 md:space-y-3">
+                            <div className="flex items-center gap-3">
+                              <h3 className="text-lg md:text-2xl font-black uppercase tracking-tight">{expandedProduct}</h3>
+                            </div>
+                            <p className="text-[10px] md:text-xs font-black uppercase tracking-[0.2em] opacity-80">
+                              {variants.length} {t('variants')} • {mainProduct.category || 'General'}
+                            </p>
+                          </div>
+                          <button 
+                            onClick={() => setExpandedProduct(null)}
+                            className="p-1.5 md:p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors backdrop-blur-md"
+                          >
+                            <X className="w-5 h-5 md:w-6 md:h-6" />
+                          </button>
+                        </div>
+                        {/* Subtle background decoration */}
+                        <div className="absolute top-0 right-0 w-32 md:w-48 h-32 md:h-48 -mr-12 md:-mr-16 -mt-12 md:-mt-16 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+                        <div className="absolute bottom-0 left-0 w-24 md:w-32 h-24 md:h-32 -ml-8 md:-ml-12 -mb-8 md:-mb-12 bg-black/5 rounded-full blur-2xl pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Modal Body (Scrollable) */}
+                    <div className="p-4 md:p-8 pt-0 overflow-y-auto scrollbar-hide flex-1 space-y-3 md:space-y-4">
+                      {variants.map((v: any) => (
+                        <div key={v.id} className="p-4 md:p-6 rounded-2xl md:rounded-3xl bg-slate-50 border border-slate-100 hover:border-blue-200 transition-all group/variant relative overflow-hidden">
+                          <div className="flex justify-between items-start relative z-10">
+                            <div className="space-y-2 md:space-y-3">
+                              <div className="flex items-center gap-2 md:gap-3">
+                                <span 
+                                  className="px-2 md:px-3 py-1 md:py-1.5 rounded-lg md:rounded-xl text-[8px] md:text-[10px] font-black uppercase tracking-widest shadow-sm"
+                                  style={{ backgroundColor: customColor, color: contrastColor }}
+                                >
+                                  {t('grade')} {v.grade}
+                                </span>
+                                <span className="text-xl md:text-2xl font-black text-slate-900 font-mono tracking-tighter">৳{v.baseRate.toLocaleString()}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 md:gap-2">
+                                {v.sizes.slice().sort((a: string, b: string) => {
+                                  const indexA = PRODUCT_SIZES.indexOf(a);
+                                  const indexB = PRODUCT_SIZES.indexOf(b);
+                                  if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                                  return a.localeCompare(b);
+                                }).map((s: string) => (
+                                  <span key={s} className="px-2 md:px-3 py-0.5 md:py-1 bg-white text-slate-500 rounded-md md:rounded-lg text-[8px] md:text-[10px] font-black uppercase tracking-tight border border-slate-200/50 shadow-sm">
+                                    {s}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="flex gap-1.5 md:gap-2">
+                              {hasPermission('MANAGE_PRODUCTS') && hasPermission('ACCESS_PRODUCT_SHOP_EDIT') && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setExpandedProduct(null);
+                                      startEdit(v);
+                                    }}
+                                    className="p-2 md:p-2.5 text-slate-400 hover:text-blue-600 bg-white shadow-sm rounded-lg md:rounded-xl transition-colors"
+                                  >
+                                    <Edit className="w-4 h-4 md:w-5 md:h-5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(v.id)}
+                                    className="p-2 md:p-2.5 text-slate-400 hover:text-red-600 bg-white shadow-sm rounded-lg md:rounded-xl transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          {v.threeDPictureURL && (
+                            <div className="mt-3 md:mt-4 p-3 md:p-4 bg-white rounded-xl md:rounded-2xl border border-slate-100 flex items-center justify-between">
+                              <span className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">3D Visualization</span>
+                              <a 
+                                href={v.threeDPictureURL} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="px-3 md:px-4 py-1.5 md:py-2 bg-slate-900 text-white text-[8px] md:text-[10px] font-black uppercase rounded-lg md:rounded-xl hover:bg-black transition-colors"
+                              >
+                                View 3D
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Modal Footer */}
+                    <div className="p-6 md:p-8 pt-2 md:pt-4 bg-slate-50 relative z-10 shrink-0 flex justify-end">
+                      <button 
+                        onClick={() => setExpandedProduct(null)}
+                        className="w-full md:w-auto px-8 py-3 bg-white text-slate-900 font-black uppercase tracking-widest text-[9px] md:text-[10px] rounded-xl md:rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-colors"
+                      >
+                        {t('close') || 'Close'}
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -5772,6 +6195,7 @@ function PublicCatalog() {
   const [contactName, setContactName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [loading, setLoading] = useState(true);
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const { t } = useLanguage();
   const { showToast } = useToast();
   const { logoUrl } = useBranding();
@@ -5796,9 +6220,16 @@ function PublicCatalog() {
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/contact_info'));
 
+    const unsubscribeCategories = onSnapshot(doc(db, 'settings', 'categories'), (doc) => {
+      if (doc.exists()) {
+        setCategoryOrder(doc.data().order || []);
+      }
+    });
+
     return () => {
       unsubscribe();
       unsubscribeContact();
+      unsubscribeCategories();
     };
   }, []);
 
@@ -5854,7 +6285,8 @@ function PublicCatalog() {
   };
 
   // Group products by category
-  const categories = ['All', ...new Set(products.map(p => p.category || 'General'))];
+  const derivedCategories = [...new Set(products.map(p => p.category || 'General'))];
+  const categories = ['All', ...categoryOrder.filter(c => derivedCategories.includes(c)), ...derivedCategories.filter(c => !categoryOrder.includes(c))];
 
   const filteredProducts = selectedCategory === 'All'
     ? products
@@ -5864,33 +6296,45 @@ function PublicCatalog() {
     const cat = p.category || 'General';
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(p);
+    
+    // Sort products by grade then size
+    acc[cat].sort((a: any, b: any) => {
+      if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
+      const sizeA = a.sizes[0] || '';
+      const sizeB = b.sizes[0] || '';
+      const indexA = PRODUCT_SIZES.indexOf(sizeA);
+      const indexB = PRODUCT_SIZES.indexOf(sizeB);
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      return sizeA.localeCompare(sizeB);
+    });
+    
     return acc;
   }, {});
 
   return (
-    <div className="min-h-screen bg-slate-50/50 p-6">
-      <div className="max-w-5xl mx-auto space-y-8">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate(-1)} className="p-2 hover:bg-white rounded-xl transition-colors">
-              <ChevronLeft className="w-6 h-6 text-slate-600" />
+    <div className="min-h-screen bg-slate-50/50 p-4 md:p-6">
+      <div className="max-w-5xl mx-auto space-y-6 md:space-y-8">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6">
+          <div className="flex items-center gap-3 md:gap-4">
+            <button onClick={() => navigate(-1)} className="p-1.5 md:p-2 hover:bg-white rounded-xl transition-colors">
+              <ChevronLeft className="w-5 h-5 md:w-6 md:h-6 text-slate-600" />
             </button>
             <div>
-              <h1 className="text-3xl font-bold text-slate-900">{t('publicCatalog')}</h1>
-              <p className="text-slate-500">{t('explorePaints')}</p>
+              <h1 className="text-xl md:text-3xl font-black text-slate-900 uppercase tracking-tight">{t('publicCatalog')}</h1>
+              <p className="text-[10px] md:text-sm font-bold text-slate-500 uppercase tracking-widest">{t('explorePaints')}</p>
             </div>
           </div>
           
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3">
+            <div className="flex items-center gap-1.5 md:gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
               {categories.map(cat => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
                   className={cn(
-                    "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    "px-3 md:px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all whitespace-nowrap",
                     selectedCategory === cat
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-100"
+                      ? "bg-slate-900 text-white shadow-md shadow-slate-100"
                       : "text-slate-500 hover:bg-slate-50"
                   )}
                 >
@@ -5899,19 +6343,19 @@ function PublicCatalog() {
               ))}
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 md:gap-4">
               {Object.keys(cart).length > 0 && (
                 <button 
                   onClick={() => setShowCartModal(true)}
-                  className="relative p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all"
+                  className="relative p-2.5 md:p-3 bg-blue-600 text-white rounded-xl md:rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all"
                 >
-                  <ShoppingCart className="w-6 h-6" />
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">
+                  <ShoppingCart className="w-5 h-5 md:w-6 md:h-6" />
+                  <span className="absolute -top-1.5 md:-top-2 -right-1.5 md:-right-2 bg-red-500 text-white text-[8px] md:text-[10px] font-bold w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center border-2 border-white">
                     {Object.values(cart).reduce((a: number, b: number) => a + b, 0)}
                   </span>
                 </button>
               )}
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200 overflow-hidden border border-slate-100">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-xl md:rounded-2xl flex items-center justify-center shadow-lg shadow-blue-50 overflow-hidden border border-slate-100">
                 <img src={logoUrl || "https://ais-dev-2t2xxqjcfxzhtv7w5ldbav-180523243505.asia-southeast1.run.app/api/attachments/a7f5a265-27f9-4674-846f-c1249683935b"} alt="Nafeu Paints" className="w-full h-full object-contain mix-blend-multiply" referrerPolicy="no-referrer" />
               </div>
             </div>
@@ -5922,24 +6366,24 @@ function PublicCatalog() {
           <motion.div 
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-blue-600 p-6 rounded-3xl text-white shadow-xl shadow-blue-200 flex flex-col md:flex-row items-center justify-between gap-4"
+            className="bg-blue-600 p-4 md:p-6 rounded-2xl md:rounded-3xl text-white shadow-xl shadow-blue-200 flex flex-col md:flex-row items-center justify-between gap-4"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                <Phone className="w-6 h-6" />
+            <div className="flex items-center gap-3 md:gap-4">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 rounded-xl md:rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                <Phone className="w-5 h-5 md:w-6 md:h-6" />
               </div>
               <div>
-                <p className="text-blue-100 text-xs font-bold uppercase tracking-widest mb-1">{t('contactForOrder')}</p>
+                <p className="text-blue-100 text-[8px] md:text-xs font-black uppercase tracking-widest mb-1">{t('contactForOrder')}</p>
                 <div className="flex flex-col">
-                  {contactName && <p className="text-lg font-bold leading-tight">{contactName}</p>}
-                  {contactNumber && <p className="text-xl font-black">{contactNumber}</p>}
+                  {contactName && <p className="text-sm md:text-lg font-black leading-tight uppercase">{contactName}</p>}
+                  {contactNumber && <p className="text-lg md:text-xl font-black">{contactNumber}</p>}
                 </div>
               </div>
             </div>
             {!profile && (
               <button 
                 onClick={() => navigate('/')}
-                className="bg-white text-blue-600 px-6 py-3 rounded-2xl font-bold hover:bg-blue-50 transition-colors shadow-lg"
+                className="w-full md:w-auto bg-white text-blue-600 px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-50 transition-colors shadow-lg"
               >
                 {t('login')}
               </button>
@@ -5962,96 +6406,110 @@ function PublicCatalog() {
                   {category}
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {catProducts.map((product: any) => (
-                    <motion.div
-                      key={product.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-xl transition-all duration-500"
-                    >
-                      <div className="aspect-square bg-slate-50 relative overflow-hidden">
-                        {product.imageUrl ? (
-                          <img 
-                            src={product.imageUrl} 
-                            alt={product.name} 
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Package className="w-12 h-12 text-slate-200" />
-                          </div>
-                        )}
-                        <div className="absolute top-4 right-4 flex flex-col gap-2">
-                          <span className="bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold text-slate-600 shadow-sm border border-slate-100">
-                            {t('grade')} {product.grade}
-                          </span>
-                          {product.threeDPictureURL && (
-                            <a 
-                              href={product.threeDPictureURL} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="bg-blue-600 text-white p-2 rounded-full shadow-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
-                              title="View 3D"
-                            >
-                              <Box className="w-4 h-4" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                      <div className="p-6 space-y-4">
-                        <h3 className="text-xl font-bold text-slate-900">{product.name}</h3>
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          {product.sizes.map((size: string) => (
-                            <span key={size} className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-bold uppercase">
-                              {size}
-                            </span>
-                          ))}
-                        </div>
-                        <div className="pt-4 border-t border-slate-50 flex justify-between items-center">
-                          <div>
-                            <span className="text-slate-400 text-xs font-medium">{t('baseRate')}</span>
-                            {profile ? (
-                              <p className="text-lg font-bold text-blue-600">৳{product.baseRate.toFixed(2)}</p>
+                  {catProducts.map((product: any) => {
+                      const customColor = getProductBrandingColor(product.name, product.customColor);
+                      const contrastColor = getContrastColor(customColor);
+
+                      return (
+                        <motion.div
+                          key={product.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          whileInView={{ opacity: 1, y: 0 }}
+                          viewport={{ once: true }}
+                          className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-xl transition-all duration-500"
+                        >
+                          <div className="aspect-square bg-slate-50 relative overflow-hidden">
+                            {product.imageUrl ? (
+                              <img 
+                                src={product.imageUrl} 
+                                alt={product.name} 
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                                referrerPolicy="no-referrer"
+                              />
                             ) : (
-                              <p className="text-sm font-bold text-slate-400 italic">{t('loginToSeePrice')}</p>
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Package className="w-12 h-12 text-slate-200" />
+                              </div>
                             )}
+                            <div className="absolute top-6 right-4 flex flex-col gap-2 z-20">
+                              <span 
+                                className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl border border-white/20 backdrop-blur-md"
+                                style={{ backgroundColor: customColor, color: contrastColor }}
+                              >
+                                {t('grade')} {product.grade}
+                              </span>
+                              {product.threeDPictureURL && (
+                                <a 
+                                  href={product.threeDPictureURL} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="bg-white/90 backdrop-blur text-slate-900 p-2 rounded-full shadow-lg hover:bg-white transition-colors flex items-center justify-center"
+                                  title="View 3D"
+                                >
+                                  <Box className="w-4 h-4" />
+                                </a>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            {profile?.role === 'shop_owner' && (
-                              <button 
-                                onClick={() => handleAddToCart(product.id)}
-                                className="p-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-2"
-                                title={t('add')}
-                              >
-                                <ShoppingCart className="w-5 h-5" />
-                                <span className="text-[10px] font-bold uppercase">{t('add')}</span>
-                              </button>
-                            )}
-                            {hasPermission('MANAGE_PRODUCTS') && (
-                              <button 
-                                onClick={() => navigate('/products')}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title={t('editProduct')}
-                              >
-                                <Settings className="w-5 h-5" />
-                              </button>
-                            )}
-                            {hasPermission('CREATE_ORDERS') && (
-                              <button 
-                                onClick={() => navigate('/new-order')}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title={t('newOrder')}
-                              >
-                                <Plus className="w-5 h-5" />
-                              </button>
-                            )}
+                      
+                          <div className="p-6 space-y-4">
+                            <h3 className="text-xl font-bold text-slate-900">{product.name}</h3>
+                            <div className="flex flex-wrap gap-2 mb-4">
+                              {product.sizes.slice().sort((a: string, b: string) => {
+                                const indexA = PRODUCT_SIZES.indexOf(a);
+                                const indexB = PRODUCT_SIZES.indexOf(b);
+                                if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                                return a.localeCompare(b);
+                              }).map((size: string) => (
+                                <span key={size} className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-bold uppercase">
+                                  {size}
+                                </span>
+                              ))}
+                            </div>
+                            <div className="pt-4 border-t border-slate-50 flex justify-between items-center">
+                              <div>
+                                <span className="text-slate-400 text-xs font-medium">{t('baseRate')}</span>
+                                {profile ? (
+                                  <p className="text-lg font-bold text-blue-600">৳{product.baseRate.toFixed(2)}</p>
+                                ) : (
+                                  <p className="text-sm font-bold text-slate-400 italic">{t('loginToSeePrice')}</p>
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                {profile?.role === 'shop_owner' && (
+                                  <button 
+                                    onClick={() => handleAddToCart(product.id)}
+                                    className="p-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-2"
+                                    title={t('add')}
+                                  >
+                                    <ShoppingCart className="w-5 h-5" />
+                                    <span className="text-[10px] font-bold uppercase">{t('add')}</span>
+                                  </button>
+                                )}
+                                {hasPermission('MANAGE_PRODUCTS') && (
+                                  <button 
+                                    onClick={() => navigate('/products')}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    title={t('editProduct')}
+                                  >
+                                    <Settings className="w-5 h-5" />
+                                  </button>
+                                )}
+                                {hasPermission('CREATE_ORDERS') && (
+                                  <button 
+                                    onClick={() => navigate('/new-order')}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    title={t('newOrder')}
+                                  >
+                                    <Plus className="w-5 h-5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
+                        </motion.div>
+                      );
+                  })}
                 </div>
               </div>
             ))

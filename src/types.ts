@@ -4,7 +4,6 @@ export type UserRole =
   | 'manager' 
   | 'worker' 
   | 'shop_owner' 
-  | 'delivery'
   | 'worker_foreman'
   | 'manager_foreman'
   | 'delivery_manager'
@@ -47,7 +46,8 @@ export type Permission =
   | 'ACCESS_PRODUCT_SHOP_VIEW'
   | 'ACCESS_PRODUCT_SHOP_EDIT'
   | 'ACCESS_WORKER_VIEW'
-  | 'ACCESS_WORKER_EDIT';
+  | 'ACCESS_WORKER_EDIT'
+  | 'MANAGE_PRODUCT_COLORS';
 
 export interface RolePermissions {
   role: UserRole;
@@ -70,6 +70,7 @@ export interface UserProfile {
   customPermissions?: Permission[]; // For fine-grained user-level overrides
   photoURL?: string;
   accentColor?: string;
+  areaInteractions?: Record<string, number>;
 }
 
 export interface ActivityType {
@@ -99,6 +100,7 @@ export interface Product {
   category?: string;
   imageUrl?: string;
   threeDPictureURL?: string;
+  customColor?: string;
 }
 
 export interface OrderItem {
