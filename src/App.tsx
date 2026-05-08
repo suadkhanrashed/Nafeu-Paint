@@ -425,6 +425,10 @@ const translations: Record<Language, Record<string, string>> = {
     contactForOrder: "Contact for Order",
     contactName: "Name",
     contactNumber: "Number",
+    attachReceipt: "Attach Receipt/Picture",
+    imagePreview: "Image Preview",
+    changeImage: "Change Image",
+    uploadingImage: "Uploading Image...",
     profile: "Profile",
     profileSettings: "Profile Settings",
     updateProfile: "Update Profile",
@@ -734,6 +738,10 @@ const translations: Record<Language, Record<string, string>> = {
     contactForOrder: "অর্ডারের জন্য কল করুন",
     contactName: "নাম",
     contactNumber: "নম্বর",
+    attachReceipt: "রসিদ/ছবি যুক্ত করুন",
+    imagePreview: "ছবির প্রিভিউ",
+    changeImage: "ছবি পরিবর্তন করুন",
+    uploadingImage: "ছবি আপলোড হচ্ছে...",
     profile: "প্রোফাইল",
     profileSettings: "প্রোফাইল সেটিংস",
     updateProfile: "Update Profile",
@@ -2199,10 +2207,11 @@ function Dashboard() {
               <div className="h-[400px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   {activeStat === 'monthlySales' ? (
+                    !selectedArea ? (
                       <BarChart 
-                        data={selectedArea ? getShopDetailsForArea(selectedArea) : chartData}
+                        data={chartData}
                         onClick={(data) => {
-                          if (data && data.activeLabel && !selectedArea) {
+                          if (data && data.activeLabel) {
                             setSelectedArea(data.activeLabel);
                           }
                         }}
@@ -2210,53 +2219,54 @@ function Dashboard() {
                       >
                         <defs>
                           <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#3b82f6" stopOpacity={1}/>
-                            <stop offset="100%" stopColor="#1d4ed8" stopOpacity={0.9}/>
+                            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                            <stop offset="100%" stopColor="#1e3a8a" stopOpacity={0.6}/>
                           </linearGradient>
-                          <filter id="shadow" height="200%">
-                            <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur" />
-                            <feOffset in="blur" dx="0" dy="8" result="offsetBlur" />
-                            <feFlood floodColor="#3b82f6" floodOpacity="0.3" result="offsetColor" />
-                            <feComposite in="offsetColor" in2="offsetBlur" operator="in" result="offsetBlur" />
-                            <feMerge>
-                              <feMergeNode />
-                              <feMergeNode in="SourceGraphic" />
-                            </feMerge>
-                          </filter>
+                          <linearGradient id="barGlow" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.4}/>
+                            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis 
                           dataKey="name" 
                           axisLine={false} 
                           tickLine={false} 
-                          tick={{ fill: '#475569', fontSize: 12, fontWeight: 900 }}
+                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }}
                           dy={15}
                         />
                         <YAxis 
                           axisLine={false} 
                           tickLine={false} 
-                          tick={{ fill: '#475569', fontSize: 12, fontWeight: 900 }}
+                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }}
                           tickFormatter={(value) => `৳${value >= 1000 ? `${(value/1000).toFixed(1)}k` : value}`}
                           dx={-10}
                         />
                         <Tooltip 
-                          cursor={{ fill: 'rgba(59, 130, 246, 0.08)' }}
+                          cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
                           content={({ active, payload }) => {
                             if (active && payload && payload.length) {
                               return (
-                                <div className="bg-white/95 backdrop-blur-md p-5 rounded-[2rem] shadow-2xl border border-blue-100 min-w-[200px] animate-in fade-in zoom-in duration-300">
-                                  <div className="flex items-center gap-3 mb-3">
-                                    <div className="w-4 h-4 rounded-full bg-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.6)]" />
-                                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">{payload[0].payload.name}</p>
+                                <div className="bg-white/90 backdrop-blur-xl p-6 rounded-[2.5rem] shadow-2xl border border-blue-50/50 min-w-[220px] animate-in fade-in zoom-in duration-300">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{payload[0].payload.name}</p>
+                                    </div>
+                                    <div className="px-2 py-0.5 bg-blue-50 rounded-full text-[8px] font-black text-blue-600 uppercase tracking-widest">Live</div>
                                   </div>
-                                  <p className="text-3xl font-black tracking-tighter text-slate-900 mb-2">৳{payload[0].value.toLocaleString()}</p>
-                                  <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-                                     <div className="h-full bg-blue-600 rounded-full" style={{ width: '100%' }} />
+                                  <p className="text-3xl font-black tracking-tighter text-slate-900 mb-1">৳{payload[0].value.toLocaleString()}</p>
+                                  <p className="text-[10px] text-slate-400 font-bold mb-4 uppercase">Total revenue generated</p>
+                                  <div className="grid grid-cols-2 gap-2 pt-4 border-t border-slate-100">
+                                    <div>
+                                      <p className="text-[8px] text-slate-400 font-black uppercase tracking-widest mb-1">Status</p>
+                                      <p className="text-[10px] text-emerald-600 font-black uppercase">Growing</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[8px] text-slate-400 font-black uppercase tracking-widest mb-1">Trend</p>
+                                      <TrendingUp className="w-3 h-3 text-blue-600" />
+                                    </div>
                                   </div>
-                                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-3 flex items-center gap-2">
-                                    <ActivityLogIcon className="w-3 h-3" />
-                                    {!selectedArea ? t('clickToExplore') || 'Click to explore shops' : t('shopPerformance') || 'Shop performance'}
-                                  </p>
                                 </div>
                               );
                             }
@@ -2266,13 +2276,62 @@ function Dashboard() {
                         <Bar 
                           dataKey="value" 
                           fill="url(#salesGradient)" 
-                          radius={[20, 20, 0, 0]}
-                          barSize={selectedArea ? 50 : 80}
-                          animationDuration={2000}
-                          className="cursor-pointer transition-all duration-500 hover:opacity-90"
-                          filter="url(#shadow)"
+                          radius={[12, 12, 0, 0]}
+                          barSize={60}
+                          animationDuration={1500}
+                          className="cursor-pointer transition-all duration-300 hover:opacity-100"
                         />
                       </BarChart>
+                    ) : (
+                      <AreaChart 
+                        data={getShopDetailsForArea(selectedArea)}
+                        margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+                      >
+                        <defs>
+                          <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis 
+                          dataKey="name" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
+                          dy={15}
+                        />
+                        <YAxis 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
+                          tickFormatter={(value) => `৳${value >= 1000 ? `${(value/1000).toFixed(1)}k` : value}`}
+                          dx={-10}
+                        />
+                        <Tooltip 
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              return (
+                                <div className="bg-white p-4 rounded-3xl shadow-xl border border-slate-100 min-w-[180px]">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{payload[0].payload.name}</p>
+                                  <p className="text-xl font-black text-slate-900">৳{payload[0].value.toLocaleString()}</p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="value" 
+                          stroke="#3b82f6" 
+                          strokeWidth={4}
+                          fillOpacity={1} 
+                          fill="url(#areaGradient)" 
+                          animationDuration={1500}
+                        />
+                      </AreaChart>
+                    )
                   ) : activeStat === 'collection' ? (
                     <BarChart 
                       layout="vertical"
@@ -3135,8 +3194,12 @@ function ShopDetails() {
     discount: 0, 
     type: 'payment' as 'payment' | 'due_addition' | 'discount' | 'previous_order' | 'previous_payment' | 'previous_due', 
     note: '',
-    date: format(new Date(), 'yyyy-MM-dd')
+    date: format(new Date(), 'yyyy-MM-dd'),
+    receiptImage: ''
   });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const reportRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
@@ -3266,7 +3329,24 @@ function ShopDetails() {
 
   const handleTransactionSubmit = async () => {
     if (!shop || !profile) return;
+    setUploadingImage(true);
     try {
+      let receiptImageUrl = newTransaction.receiptImage;
+
+      if (selectedFile) {
+        try {
+          const storageRef = ref(storage, `receipts/${shop.code}_${Date.now()}_${selectedFile.name}`);
+          const snapshot = await uploadBytes(storageRef, selectedFile);
+          receiptImageUrl = await getDownloadURL(snapshot.ref);
+        } catch (uploadErr) {
+          console.error("Image upload failed:", uploadErr);
+          showToast(t('errorUploading'));
+          // Continue without image or stop? Let's stop if user specifically tried to upload
+          setUploadingImage(false);
+          return;
+        }
+      }
+
       const transData = {
         shopCode: shop.code,
         amount: newTransaction.amount,
@@ -3275,7 +3355,8 @@ function ShopDetails() {
         workerUid: editingTransaction ? editingTransaction.workerUid : profile.uid,
         workerName: editingTransaction ? editingTransaction.workerName : (profile.displayName || profile.email),
         date: new Date(newTransaction.date).toISOString(),
-        note: newTransaction.note
+        note: newTransaction.note,
+        receiptImage: receiptImageUrl
       };
 
       if (editingTransaction) {
@@ -3290,15 +3371,21 @@ function ShopDetails() {
       
       setShowTransactionModal(false);
       setEditingTransaction(null);
+      setSelectedFile(null);
+      setImagePreview(null);
       setNewTransaction({ 
         amount: 0, 
         discount: 0, 
         type: 'payment', 
         note: '', 
-        date: format(new Date(), 'yyyy-MM-dd')
+        date: format(new Date(), 'yyyy-MM-dd'),
+        receiptImage: ''
       });
     } catch (error) {
       console.error("Transaction error:", error);
+      showToast(t('errorOccurred'));
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -3315,12 +3402,14 @@ function ShopDetails() {
 
   const openEditTransaction = (trans: Transaction) => {
     setEditingTransaction(trans);
+    setImagePreview(trans.receiptImage || null);
     setNewTransaction({
       amount: trans.amount,
       discount: trans.discount || 0,
       type: trans.type as any,
       note: trans.note || '',
-      date: format(new Date(trans.date), 'yyyy-MM-dd')
+      date: format(new Date(trans.date), 'yyyy-MM-dd'),
+      receiptImage: trans.receiptImage || ''
     });
     setShowTransactionModal(true);
   };
@@ -3517,6 +3606,24 @@ function ShopDetails() {
                         </div>
                       </div>
                       <p className="text-xs text-slate-600">{trans.note || t('noNote')}</p>
+                      {trans.receiptImage && (
+                        <div className="mt-3">
+                          <button 
+                            onClick={() => window.open(trans.receiptImage, '_blank')}
+                            className="relative group/img overflow-hidden rounded-xl border border-slate-100 block"
+                          >
+                            <img 
+                              src={trans.receiptImage} 
+                              alt="Receipt" 
+                              className="w-full max-h-32 object-cover transition-transform group-hover/img:scale-110"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                              <Eye className="w-5 h-5 text-white" />
+                            </div>
+                          </button>
+                        </div>
+                      )}
                       <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-tighter">{t('by')}: {trans.workerName}</p>
                     </div>
                   ))
@@ -3625,23 +3732,88 @@ function ShopDetails() {
                   placeholder={t('addNote')}
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">{t('attachReceipt')}</label>
+                {imagePreview ? (
+                  <div className="relative group">
+                    <img src={imagePreview} alt="Preview" className="w-full h-40 object-cover rounded-2xl border border-slate-200" referrerPolicy="no-referrer" />
+                    <button 
+                      onClick={() => {
+                        setSelectedFile(null);
+                        setImagePreview(null);
+                        setNewTransaction({ ...newTransaction, receiptImage: '' });
+                      }}
+                      className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
+                      <span className="text-white text-[10px] font-black uppercase tracking-widest">{t('changeImage')}</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setSelectedFile(file);
+                            setImagePreview(URL.createObjectURL(file));
+                          }
+                        }} 
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center w-full h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-100 transition-all group">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <Upload className="w-6 h-6 text-slate-400" />
+                      </div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('chooseImage')}</p>
+                    </div>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setSelectedFile(file);
+                          setImagePreview(URL.createObjectURL(file));
+                        }
+                      }} 
+                    />
+                  </label>
+                )}
+              </div>
             </div>
             <div className="flex gap-4">
               <button
+                disabled={uploadingImage}
                 onClick={() => {
                   setShowTransactionModal(false);
                   setEditingTransaction(null);
+                  setSelectedFile(null);
+                  setImagePreview(null);
                 }}
-                className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all"
+                className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all disabled:opacity-50"
               >
                 {t('cancel')}
               </button>
               <button
                 onClick={handleTransactionSubmit}
-                disabled={!newTransaction.amount}
-                className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-black transition-all disabled:opacity-50"
+                disabled={!newTransaction.amount || uploadingImage}
+                className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-black transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {editingTransaction ? t('update') : t('saveTransaction')}
+                {uploadingImage ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    {t('processing') || 'Processing...'}
+                  </>
+                ) : (
+                  editingTransaction ? t('update') : t('saveTransaction')
+                )}
               </button>
             </div>
           </motion.div>
@@ -6049,7 +6221,7 @@ function Reports() {
               <AreaChart data={trendData}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
@@ -6058,25 +6230,36 @@ function Reports() {
                   dataKey="name" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }}
+                  tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }}
                   dy={10}
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }}
-                  tickFormatter={(val) => `৳${val/1000}k`}
+                  tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }}
+                  tickFormatter={(val) => `৳${val >= 1000 ? `${(val/1000).toFixed(1)}k` : val}`}
                 />
                 <Tooltip 
-                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-xl border border-slate-800">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{payload[0].payload.name}</p>
+                          <p className="text-lg font-black tracking-tighter">৳{payload[0].value.toLocaleString()}</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
                 />
                 <Area 
                   type="monotone" 
                   dataKey="value" 
                   stroke="#3b82f6" 
-                  strokeWidth={3}
+                  strokeWidth={4}
                   fillOpacity={1} 
                   fill="url(#colorSales)" 
+                  animationDuration={2000}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -6099,25 +6282,41 @@ function Reports() {
                     cy="50%"
                     innerRadius={60}
                     outerRadius={80}
-                    paddingAngle={5}
+                    paddingAngle={8}
                     dataKey="value"
+                    animationDuration={1500}
                   >
                     {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="transparent" />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-white p-3 rounded-xl shadow-lg border border-slate-100">
+                            <p className="text-[10px] font-black uppercase text-slate-400">{payload[0].name}</p>
+                            <p className="text-sm font-black text-slate-900">৳{payload[0].value.toLocaleString()}</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
             <div className="space-y-3">
               {pieData.map((entry, index) => (
-                <div key={entry.name} className="flex items-center justify-between">
+                <div key={entry.name} className="flex items-center justify-between group">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
-                    <span className="text-sm font-bold text-slate-600">{entry.name}</span>
+                    <div 
+                      className="w-2.5 h-2.5 rounded-full ring-2 ring-offset-2 ring-transparent group-hover:ring-slate-100 transition-all" 
+                      style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} 
+                    />
+                    <span className="text-xs font-bold text-slate-600 uppercase tracking-tight">{entry.name}</span>
                   </div>
-                  <span className="text-sm font-black text-slate-900">৳{entry.value.toLocaleString()}</span>
+                  <span className="text-sm font-black text-slate-900 tabular-nums">৳{entry.value.toLocaleString()}</span>
                 </div>
               ))}
             </div>
@@ -6132,7 +6331,7 @@ function Reports() {
           </h2>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={shopData} layout="vertical">
+              <BarChart data={shopData} layout="vertical" margin={{ left: 20, right: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                 <XAxis type="number" hide />
                 <YAxis 
@@ -6140,20 +6339,31 @@ function Reports() {
                   type="category" 
                   axisLine={false} 
                   tickLine={false} 
-                  width={100}
-                  tick={{ fontSize: 11, fill: '#1e293b', fontWeight: 800 }}
+                  width={120}
+                  tick={{ fontSize: 10, fill: '#1e293b', fontWeight: 700 }}
                 />
                 <Tooltip 
-                  cursor={{ fill: 'transparent' }}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  cursor={{ fill: 'rgba(0,0,0,0.02)' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-white p-3 rounded-xl shadow-lg border border-slate-100">
+                          <p className="text-[10px] font-black uppercase text-slate-400">{payload[0].payload.name}</p>
+                          <p className="text-sm font-black text-slate-900">৳{payload[0].value.toLocaleString()}</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
                 />
                 <Bar 
                   dataKey="value" 
-                  radius={[0, 10, 10, 0]}
-                  barSize={20}
+                  radius={[0, 8, 8, 0]}
+                  barSize={16}
+                  animationDuration={1500}
                 >
                   {shopData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
+                    <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length] || CHART_COLORS[index % CHART_COLORS.length]} />
                   ))}
                 </Bar>
               </BarChart>

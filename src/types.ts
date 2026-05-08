@@ -150,6 +150,7 @@ export interface Transaction {
   workerName: string;
   date: string;
   note?: string;
+  receiptImage?: string;
 }
 
 export interface OrderRequest {
