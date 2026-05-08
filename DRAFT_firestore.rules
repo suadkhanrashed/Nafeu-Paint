@@ -16,10 +16,7 @@ service cloud.firestore {
     
     // Master Admin Check (Safety Hatch & Identity Verification)
     function isMasterAdmin() { 
-      return isSignedIn() && (
-        request.auth.token.email == "suadkhan.s1.qc@gmail.com" ||
-        request.auth.uid == "NhlZjK6RjQMEREHmIIKVrUWoYYY2"
-      ); 
+      return isSignedIn() && request.auth.token.email == "suadkhan.s1.qc@gmail.com"; 
     }
     
     // Identity & Path Hardening
@@ -55,40 +52,35 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'role', 'status', 'createdAt']) &&
              data.uid == request.auth.uid &&
-             (data.email == request.auth.token.email || (request.auth.uid == "NhlZjK6RjQMEREHmIIKVrUWoYYY2" && data.email == "suadkhan.s1.qc@gmail.com")) &&
+             data.email == request.auth.token.email &&
              data.role is string &&
              data.status in ['pending', 'approved', 'suspended'] &&
              data.createdAt is string;
     }
 
     function isValidOrder(data) {
-      return data.keys().hasAll(['shopCode', 'workerUid', 'items', 'grandTotal', 'status']) &&
-             data.workerUid is string &&
+      return data.keys().hasAll(['shopCode', 'shopName', 'workerUid', 'workerName', 'items', 'grandTotal', 'status', 'createdAt', 'updatedAt']) &&
+             data.workerUid == request.auth.uid &&
              data.status in ['pending', 'in_transport', 'delivered', 'cancelled', 'received', 'returned'] &&
              data.grandTotal is number && 
+             data.grandTotal >= 0 &&
              data.items is list &&
-             data.shopCode is string;
+             data.items.size() > 0 &&
+             data.shopCode is string && data.shopCode.size() < 50;
     }
 
     function isValidTransaction(data) {
-      return data.keys().hasAll(['shopCode', 'amount', 'type', 'workerUid', 'date']) &&
+      return data.keys().hasAll(['shopCode', 'amount', 'type', 'workerUid', 'workerName', 'date']) &&
              data.amount is number &&
-             data.type in ['payment', 'due_addition', 'discount', 'previous_order', 'previous_payment', 'previous_due'] &&
-             data.workerUid is string;
+             data.type in ['payment', 'due_addition', 'discount'] &&
+             data.workerUid == request.auth.uid;
     }
     
     function isValidShop(data) {
-      return data.keys().hasAll(['code', 'name', 'area']) &&
-             data.code is string &&
-             data.name is string &&
-             data.area is string;
-    }
-
-    function isValidOrderRequest(data) {
-      return data.keys().hasAll(['shopCode', 'items', 'status']) &&
-             data.status in ['pending', 'approved', 'rejected'] &&
-             data.items is list &&
-             data.shopCode is string;
+      return data.keys().hasAll(['code', 'name', 'area', 'createdAt']) &&
+             data.code is string && data.code.size() < 50 &&
+             data.name is string && data.name.size() < 200 &&
+             data.area is string && data.area.size() < 100;
     }
 
     // ===============================================================
@@ -97,53 +89,25 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isAdmin() || hasRole('manager') || hasRole('worker');
-      allow create: if (isVerified() || request.auth.token.email == "suadkhan.s1.qc@gmail.com" || request.auth.uid == "NhlZjK6RjQMEREHmIIKVrUWoYYY2") && isValidUser(incoming());
-      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'assignedAreas', 'updatedAt', 'shopCode']));
-    }
-
-    match /order_requests/{requestId} {
-      allow read, list: if isApproved() && (
-        isAdmin() || hasRole('manager') || hasRole('worker') ||
-        (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == resource.data.shopCode)
-      );
-      allow create: if isApproved() && isValidOrderRequest(incoming());
-      allow update: if isApproved() && (isAdmin() || hasRole('manager') || hasRole('worker'));
-      allow delete: if isAdmin();
-    }
-
-    match /role_permissions/{document=**} {
-      allow read, list: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /notifications/{notificationId} {
-      allow read, list: if isSignedIn() && (
-        isAdmin() || 
-        resource.data.to == request.auth.uid || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         resource.data.to == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode)
-      );
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (isAdmin() || resource.data.to == request.auth.uid);
-      allow delete: if isAdmin();
+      allow list: if isAdmin() || hasRole('manager');
+      allow create: if isVerified() && isValidUser(incoming());
+      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'assignedAreas', 'updatedAt']));
     }
 
     match /admins/{uid} {
-      allow read, list: if isSignedIn();
+      allow read: if isSignedIn();
       allow write: if isMasterAdmin();
     }
 
     match /shops/{shopCode} {
-      allow read, list: if isApproved();
+      allow read: if isApproved();
       allow create: if isApproved() && (hasRole('admin') || hasRole('manager') || hasRole('worker')) && isValidShop(incoming());
-      allow update: if isApproved() && (hasRole('admin') || hasRole('manager') || hasRole('worker'));
+      allow update: if isApproved() && (hasRole('admin') || hasRole('manager')) && isValidShop(incoming());
       allow delete: if isAdmin();
     }
 
     match /products/{productId} {
-      allow read, list: if isApproved();
+      allow read: if isApproved();
       allow write: if isApproved() && (hasRole('admin') || hasRole('manager'));
     }
 
@@ -154,14 +118,18 @@ service cloud.firestore {
         (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == existing().shopCode)
       );
       allow list: if isApproved() && (
-        isAdmin() || hasRole('manager') || hasRole('worker') ||
+        isAdmin() || hasRole('manager') ||
+        resource.data.workerUid == request.auth.uid ||
         (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == resource.data.shopCode)
       );
-      allow create: if isApproved() && (hasRole('worker') || hasRole('manager') || isAdmin()) && isValidOrder(incoming()) && incoming().workerUid == request.auth.uid;
+      allow create: if isApproved() && hasRole('worker') && isValidOrder(incoming()) && exists(/databases/$(database)/documents/shops/$(incoming().shopCode));
       allow update: if isApproved() && (
         isAdmin() || 
         hasRole('manager') || 
-        (hasRole('worker') && (existing().workerUid == request.auth.uid || existing().workerUid == null)) ||
+        (hasRole('worker') && existing().workerUid == request.auth.uid && isValidOrder(incoming()) && (
+          // Whitelisting status changes and item updates
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'items', 'grandTotal', 'dueAmount', 'updatedAt', 'modificationHistory'])
+        )) ||
         (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == existing().shopCode && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'modificationHistory']))
       );
       allow delete: if isAdmin();
@@ -174,27 +142,28 @@ service cloud.firestore {
         (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == existing().shopCode)
       );
       allow list: if isApproved() && (
-        isAdmin() || hasRole('manager') || hasRole('worker') ||
+        isAdmin() || hasRole('manager') ||
+        resource.data.workerUid == request.auth.uid ||
         (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == resource.data.shopCode)
       );
-      allow create: if isApproved() && (hasRole('worker') || hasRole('manager') || isAdmin()) && isValidTransaction(incoming()) && incoming().workerUid == request.auth.uid;
-      allow update, delete: if isApproved() && (isAdmin() || hasRole('manager') || (hasRole('worker') && existing().workerUid == request.auth.uid));
+      allow create: if isApproved() && (hasRole('worker') || hasRole('manager') || isAdmin()) && isValidTransaction(incoming());
+      allow update, delete: if isAdmin();
     }
 
     match /area_requests/{requestId} {
-      allow read, list: if isApproved() && (isAdmin() || hasRole('manager') || hasRole('worker'));
+      allow read: if isApproved() && (isAdmin() || hasRole('manager') || existing().workerUid == request.auth.uid);
       allow create: if isApproved() && hasRole('worker');
       allow update: if isApproved() && (isAdmin() || hasRole('manager'));
       allow delete: if isAdmin();
     }
 
     match /settings/{settingId} {
-      allow read, list: if isSignedIn();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
     match /activity/{activityId} {
-      allow read, list: if isAdmin() || hasRole('manager');
+      allow read: if isAdmin() || hasRole('manager');
       allow create: if isApproved();
     }
   }

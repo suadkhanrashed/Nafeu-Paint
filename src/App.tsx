@@ -46,6 +46,22 @@ import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const updateShopDueInternal = async (shopCode: string, amount: number) => {
+  if (amount === 0 || !shopCode) return;
+  try {
+    const shopsRef = collection(db, 'shops');
+    const q = query(shopsRef, where('code', '==', shopCode));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const shopDoc = snap.docs[0];
+      const currentDue = shopDoc.data().totalDue || 0;
+      await updateDoc(shopDoc.ref, { totalDue: currentDue + amount });
+    }
+  } catch (error) {
+    console.error("Error updating shop due:", error);
+  }
+};
 import { UserProfile, UserRole, UserStatus, Shop, Order, OrderItem, Transaction, ActivityType, Permission, RolePermissions, Product, AreaRequest } from './types';
 import { 
   LayoutDashboard, 
@@ -332,6 +348,10 @@ const translations: Record<Language, Record<string, string>> = {
     noNote: "No Note",
     by: "By",
     addTransaction: "Add Transaction",
+    previousDue: "Previous Due",
+    previousOrder: "Previous Order",
+    previousPayment: "Previous Payment",
+    dueAddition: "Due Addition",
     type: "Type",
     payment: "Payment",
     addDue: "Add Due",
@@ -345,6 +365,9 @@ const translations: Record<Language, Record<string, string>> = {
     variants: "Variants",
     orderItems: "Order Items",
     editOrder: "Edit Order",
+    editTransaction: "Edit Transaction",
+    update: "Update",
+    edit: "Edit",
     placingOrder: "Placing Order...",
     confirmSubmit: "Confirm Order",
     deleteOrder: "Delete Order",
@@ -549,6 +572,9 @@ const translations: Record<Language, Record<string, string>> = {
     generateCode: "কোড তৈরি করুন এবং সংরক্ষণ করুন",
     cancel: "বাতিল",
     editProduct: "পণ্য সম্পাদনা করুন",
+    editTransaction: "লেনদেন সম্পাদনা করুন",
+    update: "আপডেট",
+    edit: "সম্পাদনা",
     addProduct: "পণ্য যোগ করুন",
     baseRate: "বেস রেট",
     saveChanges: "পরিবর্তন সংরক্ষণ করুন",
@@ -590,6 +616,11 @@ const translations: Record<Language, Record<string, string>> = {
     inTransport: "পরিবহনে আছে",
     paid: "পরিশোধিত",
     partiallyPaid: "আংশিক পরিশোধিত",
+    previousDue: "আগের বকেয়া",
+    previousOrder: "আগের অর্ডার",
+    previousPayment: "আগের পেমেন্ট",
+    dueAddition: "বকেয়া যোগ",
+    date: "তারিখ",
     unpaid: "অপরিদত্ত",
     addPayment: "পেমেন্ট যোগ করুন",
     markReceived: "গৃহীত হিসেবে চিহ্নিত করুন",
@@ -1917,9 +1948,24 @@ function Dashboard() {
     due: 0,
     totalOrders: 0
   });
+  const [activeStat, setActiveStat] = useState<'monthlySales' | 'collection' | 'due' | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [orderRequests, setOrderRequests] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [selectedArea, setSelectedArea] = useState<string | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);
+  
+  const chartSectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeStat && chartSectionRef.current) {
+      setTimeout(() => {
+        chartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+    }
+  }, [activeStat]);
 
   useEffect(() => {
     if (profile?.role === 'shop_owner') {
@@ -1942,13 +1988,14 @@ function Dashboard() {
     }
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Order[];
-      const monthlyOrders = orders.filter(o => new Date(o.createdAt) >= startOfMonth);
+      const allOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Order[];
+      setOrders(allOrders);
+      const monthlyOrders = allOrders.filter(o => new Date(o.createdAt) >= startOfMonth);
       
       const monthlySales = monthlyOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
-      const totalOrders = orders.length;
-      const totalDue = orders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
-      const totalCollection = orders.reduce((sum, o) => sum + (o.amountPaid || 0), 0);
+      const totalOrders = allOrders.length;
+      const totalDue = allOrders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
+      const totalCollection = allOrders.reduce((sum, o) => sum + (o.amountPaid || 0), 0);
       
       setStats({
         monthlySales,
@@ -1956,23 +2003,84 @@ function Dashboard() {
         due: totalDue,
         totalOrders
       });
-      setRecentOrders(orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
+      setRecentOrders(allOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders_dashboard'));
 
-    let reqQ = query(collection(db, 'order_requests'), where('status', '==', 'pending'));
-    if (profile.role === 'shop_owner') {
-      reqQ = query(reqQ, where('shopCode', '==', profile.shopCode));
-    }
-
+    const unsubscribeShops = onSnapshot(collection(db, 'shops'), (snapshot) => {
+      setShops(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    });
+    
+    const reqQ = query(collection(db, 'order_requests'), where('status', '==', 'pending'));
     const unsubscribeRequests = onSnapshot(reqQ, (snapshot) => {
       setOrderRequests(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'order_requests'));
     
     return () => {
       unsubscribe();
+      unsubscribeShops();
       unsubscribeRequests();
     };
   }, [profile, hasPermission]);
+
+  useEffect(() => {
+    if (!activeStat) {
+      setChartData([]);
+      setSelectedArea(null);
+      return;
+    }
+
+    // Process data for charts
+    const areaDataMap: Record<string, number> = {};
+    orders.forEach(order => {
+      const shop = shops.find(s => s.code === order.shopCode);
+      const area = shop?.area || 'Unknown';
+      let value = 0;
+      if (activeStat === 'monthlySales') {
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+        if (new Date(order.createdAt) >= startOfMonth) {
+          value = order.grandTotal;
+        }
+      } else if (activeStat === 'collection') {
+        value = order.amountPaid || 0;
+      } else if (activeStat === 'due') {
+        value = order.dueAmount || 0;
+      }
+
+      if (value > 0) {
+        areaDataMap[area] = (areaDataMap[area] || 0) + value;
+      }
+    });
+
+    const formattedData = Object.entries(areaDataMap).map(([name, value]) => ({ name, value }));
+    setChartData(formattedData.sort((a, b) => b.value - a.value));
+  }, [activeStat, orders, shops]);
+
+  const getShopDetailsForArea = (area: string) => {
+    const shopDataMap: Record<string, number> = {};
+    orders.forEach(order => {
+      const shop = shops.find(s => s.code === order.shopCode);
+      if (shop?.area === area) {
+        let value = 0;
+        if (activeStat === 'monthlySales') {
+          const startOfMonth = new Date();
+          startOfMonth.setDate(1);
+          startOfMonth.setHours(0, 0, 0, 0);
+          if (new Date(order.createdAt) >= startOfMonth) value = order.grandTotal;
+        } else if (activeStat === 'collection') {
+          value = order.amountPaid || 0;
+        } else if (activeStat === 'due') {
+          value = order.dueAmount || 0;
+        }
+        
+        if (value > 0) {
+          shopDataMap[shop.name] = (shopDataMap[shop.name] || 0) + value;
+        }
+      }
+    });
+    return Object.entries(shopDataMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  };
 
   if (profile?.role === 'shop_owner' && profile.permissionStatus !== 'granted') {
     return <ShopOwnerDashboard />;
@@ -1998,12 +2106,28 @@ function Dashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {[
-          { label: t('monthlySales'), value: `৳${stats.monthlySales.toLocaleString()}`, icon: DollarSign, color: 'blue', sector: 'ACCESS_FINANCE_VIEW' },
-          { label: t('collection'), value: `৳${stats.collection.toLocaleString()}`, icon: Wallet, color: 'emerald', sector: 'ACCESS_FINANCE_VIEW' },
-          { label: t('due'), value: `৳${stats.due.toLocaleString()}`, icon: AlertCircle, color: 'amber', sector: 'ACCESS_FINANCE_VIEW' },
-          { label: t('totalOrders'), value: stats.totalOrders.toString(), icon: Package, color: 'indigo', isTotalOrders: true },
+          { id: 'monthlySales', label: t('monthlySales'), value: `৳${stats.monthlySales.toLocaleString()}`, icon: DollarSign, color: 'blue', sector: 'ACCESS_FINANCE_VIEW' },
+          { id: 'collection', label: t('collection'), value: `৳${stats.collection.toLocaleString()}`, icon: Wallet, color: 'emerald', sector: 'ACCESS_FINANCE_VIEW' },
+          { id: 'due', label: t('due'), value: `৳${stats.due.toLocaleString()}`, icon: AlertCircle, color: 'amber', sector: 'ACCESS_FINANCE_VIEW' },
+          { id: 'totalOrders', label: t('totalOrders'), value: stats.totalOrders.toString(), icon: Package, color: 'indigo', isTotalOrders: true },
         ].filter(s => s.sector ? hasPermission(s.sector as Permission) : true).map((stat) => (
-          <div key={stat.label} className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden group">
+          <motion.div 
+            key={stat.label} 
+            whileHover={{ y: -5 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              if (stat.isTotalOrders) {
+                navigate('/orders');
+              } else {
+                setActiveStat(activeStat === stat.id ? null : stat.id as any);
+                setShowDetails(activeStat !== stat.id);
+              }
+            }}
+            className={cn(
+              "bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden group cursor-pointer transition-all",
+              activeStat === stat.id ? "ring-2 ring-slate-900 shadow-xl" : "hover:shadow-md"
+            )}
+          >
             <div className={cn(
               "w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center mb-3 md:mb-4 transition-transform group-hover:scale-110",
               stat.color === 'blue' && "bg-blue-50 text-blue-600",
@@ -2039,63 +2163,248 @@ function Dashboard() {
               stat.color === 'emerald' && "bg-emerald-600",
               stat.color === 'indigo' && "bg-indigo-600",
             )} />
-          </div>
+          </motion.div>
         ))}
       </div>
 
       <AnimatePresence>
-        {showDetails && (
+        {showDetails && activeStat && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-hidden"
+            ref={chartSectionRef}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="space-y-6 pt-4"
           >
-            {/* Quick Chart: Weekly Orders */}
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-64">
-              <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">{t('totalOrders')}</h3>
-              <div className="h-40 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={recentOrders.slice(0, 7).reverse().map((o, i) => ({ name: i, value: o.grandTotal }))}>
-                    <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    <Tooltip cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }} content={() => null} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            
-            {/* Quick Chart: Collection Distribution */}
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-64">
-              <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">{t('paymentStatus')}</h3>
-              <div className="h-40 w-full flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: t('received'), value: stats.collection },
-                        { name: t('due'), value: stats.due }
-                      ]}
-                      innerRadius={40}
-                      outerRadius={55}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      <Cell fill="#10b981" />
-                      <Cell fill="#ef4444" />
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-1 text-right">
-                  <div className="flex items-center gap-2 justify-end">
-                    <span className="text-[10px] font-black text-slate-500 uppercase">{t('received')}</span>
-                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                  </div>
-                  <div className="flex items-center gap-2 justify-end">
-                    <span className="text-[10px] font-black text-slate-500 uppercase">{t('due')}</span>
-                    <div className="w-2 h-2 rounded-full bg-red-500" />
-                  </div>
+            <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                    {t(activeStat)} - {selectedArea ? `${t('details')} (${selectedArea})` : t('areaBaseAnalytics') || 'Area-wise Analytics'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
+                    {selectedArea ? t('shopBaseDetails') || 'Shop-based Details' : t('clickToExploreShops') || 'Click a data point to explore shops'}
+                  </p>
                 </div>
+                {selectedArea && (
+                  <button 
+                    onClick={() => setSelectedArea(null)}
+                    className="p-3 bg-slate-100 hover:bg-slate-200 rounded-2xl transition-all text-slate-900 flex items-center gap-2 font-black text-[10px] uppercase tracking-widest"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> {t('backToAreas') || 'Back to Areas'}
+                  </button>
+                )}
+              </div>
+
+              <div className="h-[400px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  {activeStat === 'monthlySales' ? (
+                      <BarChart 
+                        data={selectedArea ? getShopDetailsForArea(selectedArea) : chartData}
+                        onClick={(data) => {
+                          if (data && data.activeLabel && !selectedArea) {
+                            setSelectedArea(data.activeLabel);
+                          }
+                        }}
+                        margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+                      >
+                        <defs>
+                          <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#3b82f6" stopOpacity={1}/>
+                            <stop offset="100%" stopColor="#1d4ed8" stopOpacity={0.9}/>
+                          </linearGradient>
+                          <filter id="shadow" height="200%">
+                            <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur" />
+                            <feOffset in="blur" dx="0" dy="8" result="offsetBlur" />
+                            <feFlood floodColor="#3b82f6" floodOpacity="0.3" result="offsetColor" />
+                            <feComposite in="offsetColor" in2="offsetBlur" operator="in" result="offsetBlur" />
+                            <feMerge>
+                              <feMergeNode />
+                              <feMergeNode in="SourceGraphic" />
+                            </feMerge>
+                          </filter>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis 
+                          dataKey="name" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: '#475569', fontSize: 12, fontWeight: 900 }}
+                          dy={15}
+                        />
+                        <YAxis 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: '#475569', fontSize: 12, fontWeight: 900 }}
+                          tickFormatter={(value) => `৳${value >= 1000 ? `${(value/1000).toFixed(1)}k` : value}`}
+                          dx={-10}
+                        />
+                        <Tooltip 
+                          cursor={{ fill: 'rgba(59, 130, 246, 0.08)' }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              return (
+                                <div className="bg-white/95 backdrop-blur-md p-5 rounded-[2rem] shadow-2xl border border-blue-100 min-w-[200px] animate-in fade-in zoom-in duration-300">
+                                  <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-4 h-4 rounded-full bg-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.6)]" />
+                                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">{payload[0].payload.name}</p>
+                                  </div>
+                                  <p className="text-3xl font-black tracking-tighter text-slate-900 mb-2">৳{payload[0].value.toLocaleString()}</p>
+                                  <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
+                                     <div className="h-full bg-blue-600 rounded-full" style={{ width: '100%' }} />
+                                  </div>
+                                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-3 flex items-center gap-2">
+                                    <ActivityLogIcon className="w-3 h-3" />
+                                    {!selectedArea ? t('clickToExplore') || 'Click to explore shops' : t('shopPerformance') || 'Shop performance'}
+                                  </p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Bar 
+                          dataKey="value" 
+                          fill="url(#salesGradient)" 
+                          radius={[20, 20, 0, 0]}
+                          barSize={selectedArea ? 50 : 80}
+                          animationDuration={2000}
+                          className="cursor-pointer transition-all duration-500 hover:opacity-90"
+                          filter="url(#shadow)"
+                        />
+                      </BarChart>
+                  ) : activeStat === 'collection' ? (
+                    <BarChart 
+                      layout="vertical"
+                      data={selectedArea ? getShopDetailsForArea(selectedArea) : chartData}
+                      margin={{ left: 60, right: 40, top: 20, bottom: 20 }}
+                      onClick={(data) => {
+                        if (data && data.activeLabel && !selectedArea) {
+                          setSelectedArea(data.activeLabel);
+                        }
+                      }}
+                    >
+                      <defs>
+                        <linearGradient id="collectionGradient" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#10b981" stopOpacity={1}/>
+                          <stop offset="100%" stopColor="#059669" stopOpacity={0.9}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="4 4" horizontal={false} stroke="#f1f5f9" />
+                      <XAxis 
+                        type="number"
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#475569', fontSize: 11, fontWeight: 900 }}
+                        tickFormatter={(value) => `৳${value >= 1000 ? `${(value/1000).toFixed(1)}k` : value}`}
+                      />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category"
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#475569', fontSize: 11, fontWeight: 900 }}
+                        width={140}
+                      />
+                      <Tooltip 
+                        cursor={{ fill: 'rgba(16, 185, 129, 0.08)' }}
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-slate-900 border border-slate-700/50 text-white p-5 rounded-[2rem] shadow-2xl backdrop-blur-xl">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{payload[0].payload.name}</p>
+                                </div>
+                                <p className="text-2xl font-black tracking-tight">৳{payload[0].value.toLocaleString()}</p>
+                                <p className="text-[9px] font-bold text-emerald-400 uppercase mt-2 tracking-widest">Collection Target Met</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar 
+                        dataKey="value" 
+                        fill="url(#collectionGradient)"
+                        radius={[0, 15, 15, 0]}
+                        barSize={36}
+                        className="cursor-pointer transition-transform duration-300"
+                        animationDuration={2000}
+                      />
+                    </BarChart>
+                  ) : (
+                    <div className="relative h-full flex items-center justify-center">
+                      <PieChart>
+                        <defs>
+                          {CHART_COLORS.map((color, i) => (
+                            <filter key={i} id={`pieShadow-${i}`} height="200%">
+                              <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
+                              <feOffset dx="0" dy="4" result="offsetblur" />
+                              <feFlood floodColor={color} floodOpacity="0.2" />
+                              <feComposite in2="offsetblur" operator="in" />
+                              <feMerge>
+                                <feMergeNode />
+                                <feMergeNode in="SourceGraphic" />
+                              </feMerge>
+                            </filter>
+                          ))}
+                        </defs>
+                        <Pie
+                          data={selectedArea ? getShopDetailsForArea(selectedArea) : chartData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={110}
+                          outerRadius={150}
+                          paddingAngle={10}
+                          dataKey="value"
+                          onClick={(data) => {
+                            if (data && data.name && !selectedArea) {
+                              setSelectedArea(data.name);
+                            }
+                          }}
+                          className="cursor-pointer outline-none"
+                          animationBegin={200}
+                          animationDuration={1800}
+                        >
+                          {(selectedArea ? getShopDetailsForArea(selectedArea) : chartData).map((entry, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={CHART_COLORS[index % CHART_COLORS.length]} 
+                              stroke="white"
+                              strokeWidth={6}
+                              filter={`url(#pieShadow-${index % CHART_COLORS.length})`}
+                              className="hover:opacity-80 transition-opacity"
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              return (
+                                <div className="bg-slate-900 text-white p-5 rounded-[2rem] shadow-2xl border border-slate-700/50 backdrop-blur-xl">
+                                  <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: payload[0].payload.fill }} />
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{payload[0].name}</p>
+                                  </div>
+                                  <p className="text-3xl font-black tracking-tighter">৳{payload[0].value.toLocaleString()}</p>
+                                  <div className="mt-3 pt-3 border-t border-slate-800">
+                                     <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">{t('outstandingBalance') || 'Outstanding Balance'}</p>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                      </PieChart>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">{t('totalDue')}</p>
+                         <p className="text-3xl font-black text-slate-900">৳{stats.due.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  )}
+                </ResponsiveContainer>
               </div>
             </div>
           </motion.div>
@@ -2295,9 +2604,21 @@ function NewOrder() {
     
     const item = newItems[index];
     
-    // Rate memory key: name_size_grade
+    // Rate update logic: product, grade, or size change resets the rate to official base rate or remembered custom rate
     if (field === 'productName' || field === 'size' || field === 'grade') {
-      if (item.productName && item.size && item.grade) {
+      if (item.productName && item.grade) {
+        // Find matching product
+        const prod = products.find(p => p.name === item.productName && p.grade === item.grade);
+        if (prod) {
+          const key = `rate_${item.productName}_${item.size}_${item.grade}`;
+          const rememberedRate = localStorage.getItem(key);
+          // If a custom rate was previously entered for this exact combination, use it; otherwise use baseRate
+          newItems[index].rate = rememberedRate ? parseFloat(rememberedRate) : (prod.baseRate || 0);
+        } else {
+          // If no matching product found (e.g. grade doesn't exist for this product), reset rate
+          newItems[index].rate = 0;
+        }
+
         // Check for duplicates
         const duplicateIndex = newItems.findIndex((it, i) => 
           i !== index && 
@@ -2307,11 +2628,8 @@ function NewOrder() {
         );
 
         if (duplicateIndex !== -1) {
-          // Set blink on the CURRENT row (the 2nd one)
           setBlinkIndex(index);
           showToast(t('duplicateProduct'), 'error');
-          
-          // After delay, revert the current row and clear blink
           setTimeout(() => {
             setItems(prev => {
               const updated = [...prev];
@@ -2320,21 +2638,8 @@ function NewOrder() {
             });
             setBlinkIndex(null);
           }, 2000);
-          
-          // Important: we still need to update current items in state to show the duplicate values during the blink
           setItems(newItems);
           return;
-        }
-
-        const key = `rate_${item.productName}_${item.size}_${item.grade}`;
-        const rememberedRate = localStorage.getItem(key);
-        if (rememberedRate) {
-          newItems[index].rate = parseFloat(rememberedRate);
-        } else {
-          const prod = products.find(p => p.name === item.productName && p.grade === item.grade);
-          if (prod) {
-            newItems[index].rate = prod.baseRate || 0;
-          }
         }
       }
     }
@@ -2407,10 +2712,18 @@ function NewOrder() {
           action: 'ORDER_EDITED'
         };
 
+        const newDueAmount = grandTotal - (existingOrder.amountPaid || 0);
+
         await updateDoc(orderRef, {
           ...orderData,
+          dueAmount: newDueAmount,
           modificationHistory: [...history, newModification]
         });
+
+        // Update shop due if already finalized
+        if (['delivered', 'received'].includes(existingOrder.status)) {
+          await updateShopDueInternal(orderData.shopCode, newDueAmount - (existingOrder.dueAmount || 0));
+        }
 
         // Notify shop owner about modification
         await addDoc(collection(db, 'notifications'), {
@@ -2816,30 +3129,142 @@ function ShopDetails() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
-  const [newTransaction, setNewTransaction] = useState({ amount: 0, discount: 0, type: 'payment' as 'payment' | 'due_addition' | 'discount', note: '' });
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [newTransaction, setNewTransaction] = useState({ 
+    amount: 0, 
+    discount: 0, 
+    type: 'payment' as 'payment' | 'due_addition' | 'discount' | 'previous_order' | 'previous_payment' | 'previous_due', 
+    note: '',
+    date: format(new Date(), 'yyyy-MM-dd')
+  });
+
+  const reportRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+
+  const syncShopBalance = async () => {
+    if (!shop || !code) return;
+    try {
+      const ordersSnap = await getDocs(query(collection(db, 'orders'), where('shopCode', '==', code)));
+      const transactionsSnap = await getDocs(query(collection(db, 'transactions'), where('shopCode', '==', code)));
+
+      let totalDueFromOrders = 0;
+      ordersSnap.forEach(doc => {
+        const order = doc.data();
+        if (['delivered', 'received'].includes(order.status)) {
+          totalDueFromOrders += (order.grandTotal || 0);
+        }
+      });
+
+      let totalFromTransactions = 0;
+      transactionsSnap.forEach(doc => {
+        const trans = doc.data();
+        if (['payment', 'previous_payment', 'discount'].includes(trans.type)) {
+          totalFromTransactions -= trans.amount;
+        } else if (['due_addition', 'previous_order', 'previous_due'].includes(trans.type)) {
+          totalFromTransactions += trans.amount;
+        }
+      });
+
+      const calculatedDue = totalDueFromOrders + totalFromTransactions;
+      if (Math.abs(calculatedDue - (shop.totalDue || 0)) > 0.01) {
+        await updateDoc(doc(db, 'shops', shop.id!), { totalDue: calculatedDue });
+        // The onSnapshot will update the local state
+      }
+    } catch (error) {
+      console.error("Sync balancer error:", error);
+    }
+  };
 
   useEffect(() => {
     if (!code) return;
 
-    const fetchShopData = async () => {
-      const shopsSnap = await getDocs(query(collection(db, 'shops'), where('code', '==', code)));
-      if (!shopsSnap.empty) {
-        setShop({ id: shopsSnap.docs[0].id, ...shopsSnap.docs[0].data() } as any);
+    setLoading(true);
+    const shopQ = query(collection(db, 'shops'), where('code', '==', code));
+    const unsubscribeShop = onSnapshot(shopQ, (snapshot) => {
+      if (!snapshot.empty) {
+        setShop({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as any);
       }
-
-      const ordersSnap = await getDocs(query(collection(db, 'orders'), where('shopCode', '==', code)));
-      setOrders(ordersSnap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
-
-      const transSnap = await getDocs(query(collection(db, 'transactions'), where('shopCode', '==', code)));
-      setTransactions(transSnap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
-
       setLoading(false);
-    };
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'shop_details'));
 
-    fetchShopData();
+    const ordersQ = query(collection(db, 'orders'), where('shopCode', '==', code));
+    const unsubscribeOrders = onSnapshot(ordersQ, (snapshot) => {
+      setOrders(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'shop_orders'));
+
+    const transQ = query(collection(db, 'transactions'), where('shopCode', '==', code));
+    const unsubscribeTrans = onSnapshot(transQ, (snapshot) => {
+      setTransactions(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'shop_transactions'));
+    
+    return () => {
+      unsubscribeShop();
+      unsubscribeOrders();
+      unsubscribeTrans();
+    };
   }, [code]);
 
-  const handleAddTransaction = async () => {
+  useEffect(() => {
+    if (!loading && shop) {
+       syncShopBalance();
+    }
+  }, [loading, !!shop, code]);
+
+  const downloadReport = async (title: string, elementId: string) => {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    setExporting(true);
+    showToast(t('preparingDownload') || 'Preparing download...');
+    
+    try {
+      // Small delay to let UI settle if needed
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const dataUrl = await htmlToImage.toJpeg(element, {
+        quality: 0.95,
+        backgroundColor: '#ffffff',
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left',
+          width: element.scrollWidth + 'px',
+          height: element.scrollHeight + 'px'
+        }
+      });
+      
+      const link = document.createElement('a');
+      link.download = `${shop?.name || 'Shop'}_${title}_${format(new Date(), 'yyyy-MM-dd')}.jpg`;
+      link.href = dataUrl;
+      link.click();
+      showToast(t('successDownloaded') || 'Downloaded successfully');
+    } catch (error) {
+      console.error('Export error:', error);
+      showToast(t('errorDownloading') || 'Error downloading report', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const filteredOrders = orders.filter(o => {
+    if (!dateRange.start && !dateRange.end) return true;
+    const orderDate = new Date(o.createdAt);
+    const start = dateRange.start ? new Date(dateRange.start) : new Date(0);
+    const end = dateRange.end ? new Date(dateRange.end) : new Date();
+    end.setHours(23, 59, 59, 999);
+    return orderDate >= start && orderDate <= end;
+  });
+
+  const filteredTransactions = transactions.filter(t => {
+    if (!dateRange.start && !dateRange.end) return true;
+    const transDate = new Date(t.date);
+    const start = dateRange.start ? new Date(dateRange.start) : new Date(0);
+    const end = dateRange.end ? new Date(dateRange.end) : new Date();
+    end.setHours(23, 59, 59, 999);
+    return transDate >= start && transDate <= end;
+  });
+
+  const handleTransactionSubmit = async () => {
     if (!shop || !profile) return;
     try {
       const transData = {
@@ -2847,34 +3272,57 @@ function ShopDetails() {
         amount: newTransaction.amount,
         discount: newTransaction.discount,
         type: newTransaction.type,
-        workerUid: profile.uid,
-        workerName: profile.displayName || profile.email,
-        date: new Date().toISOString(),
+        workerUid: editingTransaction ? editingTransaction.workerUid : profile.uid,
+        workerName: editingTransaction ? editingTransaction.workerName : (profile.displayName || profile.email),
+        date: new Date(newTransaction.date).toISOString(),
         note: newTransaction.note
       };
-      await addDoc(collection(db, 'transactions'), transData);
-      
-      // Update shop total due
-      let newTotalDue = shop.totalDue;
-      if (newTransaction.type === 'payment') {
-        newTotalDue -= newTransaction.amount;
-      } else if (newTransaction.type === 'due_addition') {
-        newTotalDue += newTransaction.amount;
-      } else if (newTransaction.type === 'discount') {
-        newTotalDue -= newTransaction.amount; // Discount reduces due
+
+      if (editingTransaction) {
+        await updateDoc(doc(db, 'transactions', editingTransaction.id!), transData);
+        showToast(t('successUpdated'));
+      } else {
+        await addDoc(collection(db, 'transactions'), transData);
+        showToast(t('successAdded'));
       }
       
-      const shopRef = doc(db, 'shops', shop.id!);
-      await updateDoc(shopRef, { totalDue: newTotalDue });
+      await syncShopBalance();
       
-      showToast(t('successAdded'));
-      setShop({ ...shop, totalDue: newTotalDue });
-      setTransactions([{ id: 'temp', ...transData }, ...transactions]);
       setShowTransactionModal(false);
-      setNewTransaction({ amount: 0, discount: 0, type: 'payment', note: '' });
+      setEditingTransaction(null);
+      setNewTransaction({ 
+        amount: 0, 
+        discount: 0, 
+        type: 'payment', 
+        note: '', 
+        date: format(new Date(), 'yyyy-MM-dd')
+      });
     } catch (error) {
       console.error("Transaction error:", error);
     }
+  };
+
+  const handleDeleteTransaction = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this transaction?')) return;
+    try {
+      await deleteDoc(doc(db, 'transactions', id));
+      showToast(t('successDeleted'));
+      await syncShopBalance();
+    } catch (error) {
+       console.error("Delete transaction error:", error);
+    }
+  };
+
+  const openEditTransaction = (trans: Transaction) => {
+    setEditingTransaction(trans);
+    setNewTransaction({
+      amount: trans.amount,
+      discount: trans.discount || 0,
+      type: trans.type as any,
+      note: trans.note || '',
+      date: format(new Date(trans.date), 'yyyy-MM-dd')
+    });
+    setShowTransactionModal(true);
   };
 
   if (loading) return <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
@@ -2883,110 +3331,200 @@ function ShopDetails() {
   const canManagePayments = hasPermission('MANAGE_PAYMENTS') && hasPermission('ACCESS_FINANCE_EDIT');
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-blue-600 font-bold text-sm uppercase tracking-wider">
-            <Store className="w-4 h-4" />
-            {t('shopDetails')}
+    <div className="max-w-4xl mx-auto space-y-8 pb-20">
+      {/* Export Controls & Date Filters */}
+      <div className="bg-slate-900 p-6 rounded-[2rem] shadow-2xl space-y-6">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+              <Download className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="text-white font-bold uppercase tracking-tight">{t('generateReport') || 'Generate Report'}</h3>
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{t('selectDateRange') || 'Select Date Range'}</p>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-slate-900">{shop.name}</h1>
-          <p className="text-slate-500 flex items-center gap-2">
-            <MapPin className="w-4 h-4" /> {shop.area} • {t('shopCode')}: {shop.code}
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <input 
+              type="date" 
+              value={dateRange.start}
+              onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+              className="bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2 text-xs focus:ring-2 ring-blue-500 outline-none"
+            />
+            <span className="text-slate-500 text-xs font-black uppercase">{t('to') || 'TO'}</span>
+            <input 
+              type="date" 
+              value={dateRange.end}
+              onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+              className="bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2 text-xs focus:ring-2 ring-blue-500 outline-none"
+            />
+            <button 
+              onClick={() => setDateRange({ start: '', end: '' })}
+              className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-        <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 text-right">
-          <p className="text-blue-600 text-sm font-bold uppercase mb-1">{t('dueAmount')}</p>
-          <p className="text-3xl font-bold text-blue-900">৳{shop.totalDue.toFixed(2)}</p>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <button 
+            onClick={() => downloadReport('Full_Details', 'shop-full-report')}
+            className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/40"
+          >
+            <ImageIcon className="w-4 h-4" /> {t('fullDetails') || 'Full Details'}
+          </button>
+          <button 
+            onClick={() => downloadReport('Orders', 'shop-orders-section')}
+            className="flex items-center justify-center gap-2 bg-slate-800 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-all"
+          >
+            <ShoppingCart className="w-4 h-4" /> {t('orders') || 'Orders Only'}
+          </button>
+          <button 
+            onClick={() => downloadReport('Payments', 'shop-payments-section')}
+            className="flex items-center justify-center gap-2 bg-slate-800 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-all"
+          >
+            <Wallet className="w-4 h-4" /> {t('payments') || 'Payments Only'}
+          </button>
+          <button 
+            onClick={() => window.print()}
+            className="flex items-center justify-center gap-2 bg-slate-800 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-all"
+          >
+            <FileText className="w-4 h-4" /> {t('printPDF') || 'Print PDF'}
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <History className="w-5 h-5 text-blue-600" />
-              {t('orderHistory')}
-            </h2>
+      <div id="shop-full-report" className="p-4 bg-slate-50 rounded-[2.5rem] -mx-4 md:mx-0">
+        <div className="space-y-8">
+          <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-blue-600 font-bold text-sm uppercase tracking-wider">
+                <Store className="w-4 h-4" />
+                {t('shopDetails')}
+              </div>
+              <h1 className="text-3xl font-bold text-slate-900">{shop.name}</h1>
+              <p className="text-slate-500 flex items-center gap-2">
+                <MapPin className="w-4 h-4" /> {shop.area} • {t('shopCode')}: {shop.code}
+              </p>
+            </div>
+            <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 text-right">
+              <p className="text-blue-600 text-sm font-bold uppercase mb-1">{t('dueAmount')}</p>
+              <p className="text-3xl font-bold text-blue-900">৳{(shop.totalDue || 0).toFixed(2)}</p>
+              <p className="text-[10px] text-slate-400 font-black uppercase mt-2">{t('reportGenerated') || 'Report Generated'}: {format(new Date(), 'MMM d, yyyy')}</p>
+            </div>
           </div>
-          <div className="space-y-4">
-            {orders.length === 0 ? (
-              <p className="text-slate-500 text-sm italic">{t('noOrders')}</p>
-            ) : (
-              orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(order => (
-                <div key={order.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="font-bold text-slate-900">৳{order.grandTotal.toFixed(2)}</p>
-                      <p className="text-xs text-slate-500">{new Date(order.createdAt).toLocaleDateString()}</p>
-                    </div>
-                    <span className={cn(
-                      "px-3 py-1 rounded-full text-xs font-bold uppercase",
-                      order.status === 'delivered' ? "bg-emerald-100 text-emerald-700" :
-                      order.status === 'pending' ? "bg-amber-100 text-amber-700" :
-                      order.status === 'cancelled' ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
-                    )}>
-                      {t(order.status === 'in_transport' ? 'inTransport' : order.status)}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-600">
-                    {order.items.length} {t('items')} • {t(order.paymentStatus)}
-                  </div>
-                  {order.items && (
-                    <div className="mt-2 pt-2 border-t border-slate-50 space-y-1">
-                      {order.items.map((item: any, idx: number) => (
-                        <div key={idx} className="flex justify-between text-[10px] text-slate-400">
-                          <span>{item.productName} (G{item.grade}, {item.size}) x {item.quantity}</span>
-                          <span className="font-bold text-slate-500">৳{item.total.toFixed(2)}</span>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div id="shop-orders-section" className="space-y-6 bg-white/50 p-4 rounded-[2rem]">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 uppercase tracking-tighter">
+                  <History className="w-5 h-5 text-blue-600" />
+                  {t('orderHistory')}
+                  {dateRange.start && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 rounded-full">Filtered</span>}
+                </h2>
+              </div>
+              <div className="space-y-4">
+                {filteredOrders.length === 0 ? (
+                  <p className="text-slate-500 text-sm italic px-2">{t('noOrders')}</p>
+                ) : (
+                  filteredOrders.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(order => (
+                    <div key={order.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <p className="font-bold text-slate-900">৳{order.grandTotal.toFixed(2)}</p>
+                          <p className="text-xs text-slate-500">{new Date(order.createdAt).toLocaleDateString()}</p>
                         </div>
-                      ))}
+                        <span className={cn(
+                          "px-3 py-1 rounded-full text-xs font-bold uppercase",
+                          order.status === 'delivered' ? "bg-emerald-100 text-emerald-700" :
+                          order.status === 'pending' ? "bg-amber-100 text-amber-700" :
+                          order.status === 'cancelled' ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                        )}>
+                          {t(order.status === 'in_transport' ? 'inTransport' : order.status)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-600">
+                        {order.items.length} {t('items')} • {t(order.paymentStatus)}
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-slate-50 space-y-1">
+                        {order.items.map((item: any, idx: number) => (
+                          <div key={idx} className="flex justify-between text-[10px] text-slate-400">
+                            <span>{item.productName} (G{item.grade}, {item.size}) x {item.quantity}</span>
+                            <span className="font-bold text-slate-500">৳{item.total.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))
-            )}
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div id="shop-payments-section" className="space-y-6 bg-white/50 p-4 rounded-[2rem]">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 uppercase tracking-tighter">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                  {t('transactions')}
+                  {dateRange.start && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 rounded-full">Filtered</span>}
+                </h2>
+                {!exporting && canManagePayments && (
+                  <button 
+                    onClick={() => setShowTransactionModal(true)}
+                    className="text-blue-600 font-bold text-sm flex items-center gap-1 hover:underline"
+                  >
+                    <Plus className="w-4 h-4" /> {t('add')}
+                  </button>
+                )}
+              </div>
+              <div className="space-y-4">
+                {filteredTransactions.length === 0 ? (
+                  <p className="text-slate-500 text-sm italic px-2">{t('noTransactions')}</p>
+                ) : (
+                  filteredTransactions.sort((a, b) => b.date.localeCompare(a.date)).map(trans => (
+                    <div key={trans.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm group">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className={cn(
+                          "font-bold",
+                          trans.type === 'payment' || trans.type === 'previous_payment' ? "text-emerald-600" : 
+                          trans.type === 'discount' ? "text-blue-600" : 
+                          trans.type === 'previous_order' || trans.type === 'previous_due' || trans.type === 'due_addition' ? "text-red-600" : "text-slate-600"
+                        )}>
+                          {['payment', 'previous_payment', 'discount'].includes(trans.type) ? '-' : '+'}৳{trans.amount.toLocaleString()}
+                          {trans.type === 'discount' && <span className="ml-2 text-[10px] uppercase tracking-widest">({t('discount')})</span>}
+                          {trans.type === 'previous_order' && <span className="ml-2 text-[10px] uppercase tracking-widest">({t('previousOrder')})</span>}
+                          {trans.type === 'previous_payment' && <span className="ml-2 text-[10px] uppercase tracking-widest">({t('previousPayment')})</span>}
+                          {trans.type === 'previous_due' && <span className="ml-2 text-[10px] uppercase tracking-widest">({t('previousDue')})</span>}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400">{new Date(trans.date).toLocaleDateString()}</span>
+                          {!exporting && canManagePayments && (
+                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button 
+                                onClick={() => openEditTransaction(trans)}
+                                className="p-1 hover:bg-blue-50 text-blue-600 rounded-md transition-colors"
+                              >
+                                <Edit className="w-3 h-3" />
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteTransaction(trans.id!)}
+                                className="p-1 hover:bg-red-50 text-red-600 rounded-md transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-600">{trans.note || t('noNote')}</p>
+                      <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-tighter">{t('by')}: {trans.workerName}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
-
-        {canManagePayments && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-blue-600" />
-                {t('transactions')}
-              </h2>
-              <button 
-                onClick={() => setShowTransactionModal(true)}
-                className="text-blue-600 font-bold text-sm flex items-center gap-1 hover:underline"
-              >
-                <Plus className="w-4 h-4" /> {t('add')}
-              </button>
-            </div>
-            <div className="space-y-4">
-              {transactions.length === 0 ? (
-                <p className="text-slate-500 text-sm italic">{t('noTransactions')}</p>
-              ) : (
-                transactions.sort((a, b) => b.date.localeCompare(a.date)).map(trans => (
-                  <div key={trans.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className={cn(
-                        "font-bold",
-                        trans.type === 'payment' ? "text-emerald-600" : 
-                        trans.type === 'discount' ? "text-blue-600" : "text-red-600"
-                      )}>
-                        {trans.type === 'payment' || trans.type === 'discount' ? '-' : '+'}৳{trans.amount.toFixed(2)}
-                        {trans.type === 'discount' && <span className="ml-2 text-[10px] uppercase tracking-widest">({t('discount')})</span>}
-                      </span>
-                      <span className="text-xs text-slate-400">{new Date(trans.date).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-xs text-slate-600">{trans.note || t('noNote')}</p>
-                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-tighter">{t('by')}: {trans.workerName}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {showTransactionModal && (
@@ -2996,39 +3534,77 @@ function ShopDetails() {
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6"
           >
-            <h2 className="text-2xl font-bold text-slate-900">{t('addTransaction')}</h2>
+            <h2 className="text-2xl font-bold text-slate-900">
+              {editingTransaction ? t('editTransaction') || 'Edit Transaction' : t('addTransaction')}
+            </h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">{t('type')}</label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <button
                     onClick={() => setNewTransaction({ ...newTransaction, type: 'payment' })}
                     className={cn(
-                      "flex-1 py-2 rounded-xl font-bold transition-all text-xs",
+                      "py-2 rounded-xl font-bold transition-all text-xs",
                       newTransaction.type === 'payment' ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600"
                     )}
                   >
                     {t('payment')}
                   </button>
                   <button
-                    onClick={() => setNewTransaction({ ...newTransaction, type: 'discount' })}
+                    onClick={() => setNewTransaction({ ...newTransaction, type: 'previous_payment' })}
                     className={cn(
-                      "flex-1 py-2 rounded-xl font-bold transition-all text-xs",
-                      newTransaction.type === 'discount' ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                      "py-2 rounded-xl font-bold transition-all text-xs",
+                      newTransaction.type === 'previous_payment' ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-600"
                     )}
                   >
-                    {t('discount')}
+                    {t('previousPayment')}
                   </button>
                   <button
                     onClick={() => setNewTransaction({ ...newTransaction, type: 'due_addition' })}
                     className={cn(
-                      "flex-1 py-2 rounded-xl font-bold transition-all text-xs",
+                      "py-2 rounded-xl font-bold transition-all text-xs",
                       newTransaction.type === 'due_addition' ? "bg-red-600 text-white" : "bg-slate-100 text-slate-600"
                     )}
                   >
                     {t('addDue')}
                   </button>
+                  <button
+                    onClick={() => setNewTransaction({ ...newTransaction, type: 'previous_due' })}
+                    className={cn(
+                      "py-2 rounded-xl font-bold transition-all text-xs",
+                      newTransaction.type === 'previous_due' ? "bg-red-500 text-white" : "bg-slate-100 text-slate-600"
+                    )}
+                  >
+                    {t('previousDue')}
+                  </button>
+                  <button
+                    onClick={() => setNewTransaction({ ...newTransaction, type: 'previous_order' })}
+                    className={cn(
+                      "py-2 rounded-xl font-bold transition-all text-xs",
+                      newTransaction.type === 'previous_order' ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"
+                    )}
+                  >
+                    {t('previousOrder')}
+                  </button>
+                  <button
+                    onClick={() => setNewTransaction({ ...newTransaction, type: 'discount' })}
+                    className={cn(
+                      "py-2 rounded-xl font-bold transition-all text-xs",
+                      newTransaction.type === 'discount' ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                    )}
+                  >
+                    {t('discount')}
+                  </button>
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">{t('date')}</label>
+                <input
+                  type="date"
+                  value={newTransaction.date}
+                  onChange={(e) => setNewTransaction({ ...newTransaction, date: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-900"
+                />
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">{t('amount')}</label>
@@ -3036,7 +3612,8 @@ function ShopDetails() {
                   type="number"
                   value={newTransaction.amount}
                   onChange={(e) => setNewTransaction({ ...newTransaction, amount: Number(e.target.value) })}
-                  className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-900"
+                  placeholder="0.00"
                 />
               </div>
               <div>
@@ -3044,22 +3621,27 @@ function ShopDetails() {
                 <textarea
                   value={newTransaction.note}
                   onChange={(e) => setNewTransaction({ ...newTransaction, note: e.target.value })}
-                  className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 h-24 resize-none"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-900 h-24"
+                  placeholder={t('addNote')}
                 />
               </div>
             </div>
             <div className="flex gap-4">
               <button
-                onClick={() => setShowTransactionModal(false)}
-                className="flex-1 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => {
+                  setShowTransactionModal(false);
+                  setEditingTransaction(null);
+                }}
+                className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all"
               >
                 {t('cancel')}
               </button>
               <button
-                onClick={handleAddTransaction}
-                className="flex-1 py-3 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200"
+                onClick={handleTransactionSubmit}
+                disabled={!newTransaction.amount}
+                className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-black transition-all disabled:opacity-50"
               >
-                {t('save')}
+                {editingTransaction ? t('update') : t('saveTransaction')}
               </button>
             </div>
           </motion.div>
@@ -3093,7 +3675,7 @@ function OrderDetails() {
     return () => unsubscribe();
   }, [id]);
 
-  const updateItem = async (index: number, updates: Partial<OrderItem>) => {
+  const updateItem = async (index: number, updates: Partial<any>) => {
     if (!id || !order) return;
     const newItems = [...order.items];
     const item = { ...newItems[index], ...updates };
@@ -3120,6 +3702,12 @@ function OrderDetails() {
           action: `ITEM_UPDATED: ${item.productName} (Packed: ${item.packed ? 'Yes' : 'No'}, D.Qty: ${qty})`
         })
       });
+
+      // Update shop due if already finalized
+      if (['delivered', 'received'].includes(order.status)) {
+        await updateShopDueInternal(order.shopCode, newDueAmount - order.dueAmount);
+      }
+
       showToast(t('successUpdated'));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `orders/${id}`);
@@ -3130,26 +3718,26 @@ function OrderDetails() {
   if (!order) return (
     <div className="flex flex-col items-center justify-center p-12 space-y-4">
       <Package className="w-16 h-16 text-slate-200" />
-      <h2 className="text-xl font-bold text-slate-800">{t('orderNotFound') || 'Order Not Found'}</h2>
+      <h2 className="text-xl font-bold text-slate-800">{t('orderNotFound')}</h2>
       <button onClick={() => navigate('/orders')} className="text-blue-600 font-bold hover:underline">
-        {t('backToOrders') || 'Back to Orders'}
+        {t('backToOrders')}
       </button>
     </div>
   );
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-12">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 font-bold italic font-[Georgia]">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => navigate('/orders')}
-            className="p-3 bg-[#c3eeef] rounded-2xl shadow-sm border border-slate-100 text-slate-400 hover:text-blue-600 transition-colors"
+            className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100 text-slate-400 hover:text-blue-600 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">{t('orderDetails') || 'Order Details'}</h1>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('orderId') || 'Order ID'}: #{order.id}</p>
+            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">{t('orderDetails')}</h1>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('orderId')}: #{order.id}</p>
           </div>
         </div>
         {(profile?.role === 'manager' || profile?.role === 'delivery' || profile?.role === 'delivery_manager' || profile?.role === 'admin' || profile?.role === 'owner') && (
@@ -3161,7 +3749,7 @@ function OrderDetails() {
                 viewMode === 'standard' ? "bg-slate-900 text-white shadow-lg shadow-slate-200" : "text-slate-400 hover:text-slate-600"
               )}
             >
-              {t('standardView') || 'STANDARD'}
+              {t('standardView')}
             </button>
             <button
               onClick={() => setViewMode('delivery')}
@@ -3170,7 +3758,7 @@ function OrderDetails() {
                 viewMode === 'delivery' ? "bg-blue-600 text-white shadow-lg shadow-blue-100" : "text-slate-400 hover:text-slate-600"
               )}
             >
-              {t('deliveryView') || 'DELIVERY'}
+              {t('deliveryView')}
             </button>
           </div>
         )}
@@ -3178,7 +3766,6 @@ function OrderDetails() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-6">
-          {/* Main Info */}
           <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
             <div className="flex justify-between items-start">
               <div className="space-y-1">
@@ -3196,14 +3783,13 @@ function OrderDetails() {
                 <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">{order.shopCode}</p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">{t('orderDate') || 'Order Date'}</p>
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">{t('orderDate')}</p>
                 <p className="font-bold text-slate-900">{format(new Date(order.createdAt), 'MMM d, yyyy')}</p>
                 <p className="text-xs text-slate-400 font-medium">{format(new Date(order.createdAt), 'h:mm a')}</p>
               </div>
             </div>
 
             <div className="h-px bg-slate-50" />
-
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">{t('items')}</h3>
@@ -3214,121 +3800,140 @@ function OrderDetails() {
                 )}
               </div>
               
-              {viewMode === 'standard' ? (
-                <div className="space-y-4">
-                  {order.items.map((item: any, i: number) => (
-                    <div key={i} className="flex flex-col sm:flex-row gap-4 sm:items-center p-6 bg-slate-50 rounded-3xl border border-slate-100 transition-all hover:bg-white hover:border-blue-200">
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm shrink-0 font-black text-blue-600">
-                          {item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="px-1.5 py-0.5 bg-slate-900 text-white text-[8px] font-black uppercase rounded">{t('gradeAbbr') || 'G'}{item.grade}</span>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.size}</span>
-                          </div>
-                          <h4 className="text-sm font-black text-slate-800 uppercase truncate">{item.productName}</h4>
-                          {item.deliveredQuantity !== undefined && item.deliveredQuantity !== item.quantity && (
-                            <p className="text-[10px] text-red-500 font-black uppercase mt-1">
-                              Ordered: {item.quantity}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-6 justify-between sm:justify-end">
-                        {(profile?.role === 'manager' || profile?.role === 'delivery' || profile?.role === 'delivery_manager' || profile?.role === 'admin' || profile?.role === 'owner') && (
-                          <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-slate-100 shrink-0">
-                            <div className="flex items-center gap-2">
-                              <label className="text-[9px] font-black text-slate-300 uppercase">{t('delQty') || 'QTY'}</label>
-                              <input 
-                                type="number"
-                                min="0"
-                                value={item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity}
-                                onChange={(e) => updateItem(i, { deliveredQuantity: Number(e.target.value) })}
-                                className="w-12 bg-slate-50 rounded-lg text-center font-black text-xs py-1"
-                              />
+              {/* Grouped Items List */}
+              {Object.entries(order.items.reduce((acc: any, item: any) => {
+                const cat = item.productCategory || 'General';
+                if (!acc[cat]) acc[cat] = [];
+                acc[cat].push(item);
+                return acc;
+              }, {}) as Record<string, any[]>).map(([category, catItems]) => (
+                <div key={category} className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">{category}</p>
+                    <div className="h-px flex-1 bg-slate-50" />
+                  </div>
+                  <div className="space-y-4">
+                    {viewMode === 'standard' ? (
+                      catItems.map((item: any, i: number) => {
+                        const originalIdx = order.items.findIndex((oi: any) => oi === item);
+                        return (
+                          <div key={originalIdx} className="flex flex-col sm:flex-row gap-4 sm:items-center p-6 bg-slate-50 rounded-3xl border border-slate-100 transition-all hover:bg-white hover:border-blue-200">
+                            <div className="flex items-center gap-4 flex-1">
+                              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm shrink-0 font-black text-blue-600">
+                                {item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className="px-1.5 py-0.5 bg-slate-900 text-white text-[8px] font-black uppercase rounded">{t('gradeAbbr') || 'G'}{item.grade}</span>
+                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.size}</span>
+                                </div>
+                                <h4 className="text-sm font-black text-slate-800 uppercase truncate">{item.productName}</h4>
+                                {item.deliveredQuantity !== undefined && item.deliveredQuantity !== item.quantity && (
+                                  <p className="text-[10px] text-red-500 font-black uppercase mt-1">
+                                    Ordered: {item.quantity}
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                            <button
-                              onClick={() => updateItem(i, { packed: !item.packed })}
+
+                            <div className="flex items-center gap-6 justify-between sm:justify-end">
+                              {(profile?.role === 'manager' || profile?.role === 'delivery' || profile?.role === 'delivery_manager' || profile?.role === 'admin' || profile?.role === 'owner') && (
+                                <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-slate-100 shrink-0">
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-[9px] font-black text-slate-300 uppercase">{t('delQty') || 'QTY'}</label>
+                                    <input 
+                                      type="number"
+                                      min="0"
+                                      value={item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity}
+                                      onChange={(e) => updateItem(originalIdx, { deliveredQuantity: Number(e.target.value) })}
+                                      className="w-12 bg-slate-50 rounded-lg text-center font-black text-xs py-1"
+                                    />
+                                  </div>
+                                  <button
+                                    onClick={() => updateItem(originalIdx, { packed: !item.packed })}
+                                    className={cn(
+                                      "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all",
+                                      item.packed ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                                    )}
+                                  >
+                                    {item.packed ? <Check className="w-3 h-3" /> : null}
+                                    {t('packed')}
+                                  </button>
+                                </div>
+                              )}
+                              <div className="text-right shrink-0">
+                                <p className="text-sm font-black text-slate-900">৳{item.total.toLocaleString()}</p>
+                                <p className="text-[9px] font-bold text-slate-300">৳{item.rate.toLocaleString()} / unit</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="divide-y divide-slate-50 border border-slate-50 rounded-3xl overflow-hidden shadow-sm">
+                        {catItems.map((item: any, idxInGroup: number) => {
+                          const originalIdx = order.items.findIndex((oi: any) => oi === item);
+                          return (
+                            <div 
+                              key={originalIdx} 
                               className={cn(
-                                "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all",
-                                item.packed ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                                "flex items-center gap-4 p-5 transition-colors",
+                                item.packed ? "bg-emerald-50/30" : "bg-white"
                               )}
                             >
-                              {item.packed ? <Check className="w-3 h-3" /> : null}
-                              {t('packed')}
-                            </button>
-                          </div>
-                        )}
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-black text-slate-900">৳{item.total.toLocaleString()}</p>
-                          <p className="text-[9px] font-bold text-slate-300">৳{item.rate.toLocaleString()} / unit</p>
-                        </div>
+                              <button
+                                onClick={() => updateItem(originalIdx, { packed: !item.packed })}
+                                className={cn(
+                                  "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all shrink-0",
+                                  item.packed ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-100 bg-slate-50 text-transparent"
+                                )}
+                              >
+                                <Check className="w-5 h-5 stroke-[4]" />
+                              </button>
+                              <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4 items-center">
+                                <div>
+                                  <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('product') || 'PRODUCT'}</p>
+                                  <p className="text-xs font-black text-slate-900 uppercase truncate">{item.productName}</p>
+                                </div>
+                                <div>
+                                   <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('size')}</p>
+                                   <p className="text-xs font-black text-slate-900 uppercase">{item.size} ({t('gradeAbbr')}{item.grade})</p>
+                                </div>
+                                <div>
+                                   <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('quantity')}</p>
+                                   <div className="flex items-center gap-3">
+                                     <span className="text-sm font-black text-blue-600">{item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity}</span>
+                                     <div className="flex gap-1">
+                                       <button 
+                                         onClick={() => {
+                                           const cur = item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity;
+                                           if (cur > 0) updateItem(originalIdx, { deliveredQuantity: cur - 1 });
+                                         }}
+                                         className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200"
+                                       >-</button>
+                                       <button 
+                                         onClick={() => {
+                                           const cur = item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity;
+                                           updateItem(originalIdx, { deliveredQuantity: cur + 1 });
+                                         }}
+                                         className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200"
+                                       >+</button>
+                                     </div>
+                                   </div>
+                                </div>
+                                <div className="text-right sm:block hidden">
+                                   <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('total')}</p>
+                                   <p className="text-xs font-black text-slate-900">৳{item.total.toLocaleString()}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    </div>
-                  ))}
+                    )}
+                  </div>
                 </div>
-              ) : (
-                /* DELIVERER COMPACT VIEW */
-                <div className="divide-y divide-slate-50 border border-slate-50 rounded-3xl overflow-hidden shadow-sm">
-                  {order.items.map((item: any, i: number) => (
-                    <div 
-                      key={i} 
-                      className={cn(
-                        "flex items-center gap-4 p-5 transition-colors",
-                        item.packed ? "bg-emerald-50/30" : "bg-white"
-                      )}
-                    >
-                      <button
-                        onClick={() => updateItem(i, { packed: !item.packed })}
-                        className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all shrink-0",
-                          item.packed ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-100 bg-slate-50 text-transparent"
-                        )}
-                      >
-                        <Check className="w-5 h-5 stroke-[4]" />
-                      </button>
-                      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4 items-center">
-                        <div>
-                          <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('product') || 'PRODUCT'}</p>
-                          <p className="text-xs font-black text-slate-900 uppercase truncate">{item.productName}</p>
-                        </div>
-                        <div>
-                           <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('size')}</p>
-                           <p className="text-xs font-black text-slate-900 uppercase">{item.size} ({t('gradeAbbr')}{item.grade})</p>
-                        </div>
-                        <div>
-                           <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('quantity')}</p>
-                           <div className="flex items-center gap-3">
-                             <span className="text-sm font-black text-blue-600">{item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity}</span>
-                             <div className="flex gap-1">
-                               <button 
-                                 onClick={() => {
-                                   const cur = item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity;
-                                   if (cur > 0) updateItem(i, { deliveredQuantity: cur - 1 });
-                                 }}
-                                 className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200"
-                               >-</button>
-                               <button 
-                                 onClick={() => {
-                                   const cur = item.deliveredQuantity !== undefined ? item.deliveredQuantity : item.quantity;
-                                   updateItem(i, { deliveredQuantity: cur + 1 });
-                                 }}
-                                 className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200"
-                               >+</button>
-                             </div>
-                           </div>
-                        </div>
-                        <div className="text-right sm:block hidden">
-                           <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">{t('total')}</p>
-                           <p className="text-xs font-black text-slate-900">৳{item.total.toLocaleString()}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
           </section>
 
@@ -3442,6 +4047,8 @@ function OrderList() {
   const [newAreaName, setNewAreaName] = useState('');
   const [viewingHistory, setViewingHistory] = useState<Order | null>(null);
 
+  const [shops, setShops] = useState<Shop[]>([]);
+
   useEffect(() => {
     if (!profile) return;
     let q = query(collection(db, 'orders'));
@@ -3457,7 +4064,14 @@ function OrderList() {
       setLoading(false);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders_list'));
 
-    return () => unsubscribe();
+    const unsubscribeShops = onSnapshot(collection(db, 'shops'), (snapshot) => {
+      setShops(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeShops();
+    };
   }, [profile]);
 
   useEffect(() => {
@@ -3491,7 +4105,13 @@ function OrderList() {
 
   const updateStatus = async (id: string, status: string) => {
     try {
-      await updateDoc(doc(db, 'orders', id), { 
+      const orderRef = doc(db, 'orders', id);
+      const snap = await getDoc(orderRef);
+      if (!snap.exists()) return;
+      const orderData = snap.data();
+      const oldStatus = orderData.status;
+
+      await updateDoc(orderRef, { 
         status, 
         updatedAt: new Date().toISOString(),
         modificationHistory: arrayUnion({
@@ -3501,6 +4121,17 @@ function OrderList() {
           action: `STATUS_UPDATED: ${status.toUpperCase()}`
         })
       });
+
+      // Update shop due if transitioning to/from delivered/received
+      const wasFinalized = ['delivered', 'received'].includes(oldStatus);
+      const isFinalized = ['delivered', 'received'].includes(status);
+
+      if (!wasFinalized && isFinalized) {
+        await updateShopDueInternal(orderData.shopCode, orderData.dueAmount || 0);
+      } else if (wasFinalized && !isFinalized) {
+        await updateShopDueInternal(orderData.shopCode, -(orderData.dueAmount || 0));
+      }
+
       showToast(t('successUpdated'));
     } catch (error) {
       console.error("Status update error:", error);
@@ -3509,7 +4140,13 @@ function OrderList() {
 
   const markReceived = async (id: string) => {
     try {
-      await updateDoc(doc(db, 'orders', id), { 
+      const orderRef = doc(db, 'orders', id);
+      const snap = await getDoc(orderRef);
+      if (!snap.exists()) return;
+      const orderData = snap.data();
+      const oldStatus = orderData.status;
+
+      await updateDoc(orderRef, { 
         receivedByWorker: true,
         status: 'received',
         updatedAt: new Date().toISOString(),
@@ -3520,6 +4157,13 @@ function OrderList() {
           action: 'ORDER_MARKED_RECEIVED'
         })
       });
+
+      // Update shop due if transitioning from non-finalized to received
+      const wasFinalized = ['delivered', 'received'].includes(oldStatus);
+      if (!wasFinalized) {
+        await updateShopDueInternal(orderData.shopCode, orderData.dueAmount || 0);
+      }
+
       showToast(t('successUpdated'));
     } catch (error) {
       console.error("Mark received error:", error);
@@ -3532,9 +4176,11 @@ function OrderList() {
       try {
         const paid = parseFloat(amount);
         const newPaid = (order.amountPaid || 0) + paid;
+        const newDue = order.grandTotal - newPaid;
+
         await updateDoc(doc(db, 'orders', order.id), {
           amountPaid: newPaid,
-          dueAmount: order.grandTotal - newPaid,
+          dueAmount: newDue,
           paymentStatus: newPaid >= order.grandTotal ? 'paid' : 'partially_paid',
           updatedAt: new Date().toISOString(),
           modificationHistory: arrayUnion({
@@ -3544,6 +4190,23 @@ function OrderList() {
             action: `PAYMENT_ADDED: ${paid}`
           })
         });
+
+        // Add a transaction record for this payment
+        await addDoc(collection(db, 'transactions'), {
+          shopCode: order.shopCode,
+          amount: paid,
+          type: 'payment',
+          workerUid: profile?.uid,
+          workerName: profile?.displayName || profile?.email,
+          date: new Date().toISOString(),
+          note: `Payment for Order #${order.id?.slice(-6) || ''}`
+        });
+
+        // Update shop due if finalized
+        if (['delivered', 'received'].includes(order.status)) {
+          await updateShopDueInternal(order.shopCode, -paid);
+        }
+
         showToast(t('successUpdated'));
       } catch (error) {
         console.error("Add payment error:", error);
@@ -3567,6 +4230,17 @@ function OrderList() {
     }
     return order.status === statusFilter;
   });
+
+  // Group filtered orders by Area and Shop
+  const groupedOrders = filteredOrders.reduce((acc: Record<string, Record<string, any[]>>, order) => {
+    const shop = shops.find(s => s.code === order.shopCode);
+    const area = shop?.area || 'Other';
+    const shopName = shop?.name || order.shopName || 'Unknown Shop';
+    if (!acc[area]) acc[area] = {};
+    if (!acc[area][shopName]) acc[area][shopName] = [];
+    acc[area][shopName].push(order);
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-8">
@@ -3679,127 +4353,172 @@ function OrderList() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4">
+      <div className="space-y-16">
         {loading ? (
           <div className="h-64 flex items-center justify-center">
             <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : Object.keys(groupedOrders).length === 0 ? (
           <div className="bg-white p-12 rounded-2xl text-center border border-dashed border-slate-200">
             <Package className="w-12 h-12 text-slate-300 mx-auto mb-4" />
             <p className="text-slate-500 font-medium">{t('noOrders')}</p>
           </div>
         ) : (
-          filteredOrders.map((order) => (
-            <motion.div
-              layout
-              key={order.id}
-              onClick={() => navigate(`/orders/${order.id}`)}
-              className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center gap-6 cursor-pointer hover:border-blue-200 hover:shadow-md transition-all group"
-            >
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-lg font-bold text-slate-900">{order.shopName}</h3>
-                  <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded">#{order.shopCode}</span>
-                </div>
-                <div className="flex flex-wrap gap-4 text-sm text-slate-500">
-                  <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {order.workerName}</span>
-                  <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {format(new Date(order.createdAt), 'MMM d, h:mm a')}</span>
-                  <span className="font-bold text-slate-900">৳{order.grandTotal.toFixed(2)}</span>
-                </div>
-                
-                {order.items && (
-                  <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                    {order.items.map((item: any, idx: number) => (
-                      <div key={idx} className="flex justify-between text-xs text-slate-500">
-                        <span>{item.productName} (G{item.grade}, {item.size}) x {item.quantity}</span>
-                        <span className="font-bold text-slate-700">৳{item.total.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+          Object.entries(groupedOrders).sort(([a], [b]) => a.localeCompare(b)).map(([area, shopsMap]) => (
+            <div key={area} className="space-y-8">
+              <div className="flex items-center gap-4">
+                <div className="h-10 w-2 bg-gradient-to-b from-blue-600 to-blue-400 rounded-full" />
+                <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-4 italic font-[Georgia]">
+                  {area}
+                  <span className="text-sm bg-blue-100 text-blue-700 px-4 py-1 rounded-2xl font-black not-italic font-sans">
+                    {Object.values(shopsMap).flat().length}
+                  </span>
+                </h2>
+              </div>
+              
+              <div className="space-y-10 pl-4 md:pl-8 border-l-2 border-slate-50">
+                {Object.entries(shopsMap).sort(([a], [b]) => a.localeCompare(b)).map(([shopName, shopOrders]) => (
+                  <div key={shopName} className="space-y-4">
+                    <h3 className="text-xl font-bold text-slate-700 flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-slate-300" />
+                      {shopName}
+                    </h3>
 
-                {order.modificationHistory && order.modificationHistory.length > 0 && (
-                  <div className="mt-4 pt-2 border-t border-slate-50 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                      <ActivityLogIcon className="w-3 h-3" />
-                      {t('lastModified')}: {order.modificationHistory[order.modificationHistory.length - 1].userName} {t('at')} {format(new Date(order.modificationHistory[order.modificationHistory.length - 1].timestamp), 'MMM d, h:mm a')}
+                    <div className="grid grid-cols-1 gap-4">
+                      {shopOrders.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((order) => (
+                        <motion.div
+                          layout
+                          key={order.id}
+                          onClick={() => navigate(`/orders/${order.id}`)}
+                          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center gap-6 cursor-pointer hover:border-blue-200 hover:shadow-md transition-all group relative overflow-hidden"
+                        >
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-1 rounded tracking-widest leading-none">#{order.shopCode}</span>
+                              <div className="h-1 flex-1 bg-slate-50" />
+                            </div>
+                            
+                            <div className="flex flex-wrap gap-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+                              <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-blue-500" /> {order.workerName}</span>
+                              <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-blue-500" /> {format(new Date(order.createdAt), 'MMM d, h:mm a')}</span>
+                            </div>
+
+                            <div className="text-2xl font-black text-slate-900 tracking-tighter">৳{order.grandTotal.toFixed(2)}</div>
+                            
+                            {order.items && (
+                              <div className="mt-4 pt-4 border-t border-slate-50 space-y-3">
+                                {Object.entries(order.items.reduce((acc: any, item: any) => {
+                                  const cat = item.productCategory || 'General';
+                                  if (!acc[cat]) acc[cat] = [];
+                                  acc[cat].push(item);
+                                  return acc;
+                                }, {}) as Record<string, any[]>).map(([category, catItems]) => (
+                                  <div key={category} className="space-y-1">
+                                    <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em]">{category}</p>
+                                    <div className="space-y-1">
+                                      {catItems.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between text-xs">
+                                          <span className="text-slate-500 font-medium">
+                                            {item.productName} 
+                                            <span className="text-[9px] text-slate-400 ml-2">G{item.grade}, {item.size} × {item.quantity}</span>
+                                          </span>
+                                          <span className="font-black text-slate-900">৳{item.total.toFixed(2)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {order.modificationHistory && order.modificationHistory.length > 0 && (
+                              <div className="mt-4 pt-2 border-t border-slate-50 flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-[8px] text-slate-300 font-black uppercase tracking-widest">
+                                  <ActivityLogIcon className="w-3 h-3" />
+                                  {t('lastModified')}: {order.modificationHistory[order.modificationHistory.length - 1].userName} {t('at')} {format(new Date(order.modificationHistory[order.modificationHistory.length - 1].timestamp), 'MMM d, h:mm a')}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-4 shrink-0">
+                            <div className={cn(
+                              "px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm",
+                              order.status === 'pending' && "bg-amber-50 text-amber-600 border border-amber-100",
+                              order.status === 'in_transport' && "bg-blue-50 text-blue-600 border border-blue-100",
+                              order.status === 'delivered' && "bg-emerald-50 text-emerald-600 border border-emerald-100",
+                              order.status === 'cancelled' && "bg-red-50 text-red-600 border border-red-100",
+                              order.status === 'received' && "bg-purple-50 text-purple-600 border border-purple-100",
+                            )}>
+                              {t(order.status === 'in_transport' ? 'inTransport' : order.status)}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {hasPermission('EDIT_ORDER') && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (['delivered', 'in_transport'].includes(order.status)) {
+                                      const statusText = t(order.status === 'in_transport' ? 'inTransport' : order.status);
+                                      showToast(`${t('orderCannotBeEdited')}: ${statusText}`, 'error');
+                                      return;
+                                    }
+                                    navigate('/new-order', { state: { editOrder: order } });
+                                  }}
+                                  className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-all border border-transparent hover:border-blue-100"
+                                  title={t('editOrder')}
+                                >
+                                  <Edit className="w-5 h-5" />
+                                </button>
+                              )}
+
+                              {hasPermission('MARK_ORDER_RECEIVED') && order.status === 'delivered' && !order.receivedByWorker && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    markReceived(order.id);
+                                  }}
+                                  className="flex items-center gap-2 bg-slate-900 text-white font-black py-3 px-6 rounded-xl hover:bg-black transition-all shadow-xl shadow-slate-200 text-xs tracking-widest uppercase"
+                                >
+                                  <CheckCircle2 className="w-4 h-4" /> {t('markReceived')}
+                                </button>
+                              )}
+                            </div>
+
+                            {hasPermission('UPDATE_ORDER_STATUS') && hasPermission('ACCESS_DELIVERY_EDIT') && (
+                              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                <select
+                                  value={order.status}
+                                  onChange={(e) => updateStatus(order.id, e.target.value)}
+                                  className="px-4 py-2.5 rounded-xl border border-slate-100 text-[10px] font-black uppercase tracking-widest outline-none bg-slate-50 focus:bg-white focus:border-blue-200 transition-all"
+                                >
+                                  <option value="pending">{t('pending')}</option>
+                                  <option value="in_transport">{t('inTransport')}</option>
+                                  <option value="delivered">{t('delivered')}</option>
+                                  <option value="cancelled">{t('cancelled')}</option>
+                                </select>
+                                
+                                {hasPermission('MANAGE_PAYMENTS') && hasPermission('ACCESS_FINANCE_EDIT') && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      addPayment(order);
+                                    }}
+                                    className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-100 transition-all"
+                                  >
+                                    {t('addPayment')}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      ))}
                     </div>
-                    <button
-                      onClick={() => setViewingHistory(order)}
-                      className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase"
-                    >
-                      {t('viewHistory')}
-                    </button>
                   </div>
-                )}
+                ))}
               </div>
-
-              <div className="flex flex-wrap items-center gap-4">
-                <div className={cn(
-                  "px-4 py-2 rounded-full text-sm font-bold",
-                  order.status === 'pending' && "bg-amber-50 text-amber-600",
-                  order.status === 'in_transport' && "bg-blue-50 text-blue-600",
-                  order.status === 'delivered' && "bg-emerald-50 text-emerald-600",
-                  order.status === 'cancelled' && "bg-red-50 text-red-600",
-                  order.status === 'received' && "bg-purple-50 text-purple-600",
-                )}>
-                  {t(order.status === 'in_transport' ? 'inTransport' : order.status)}
-                </div>
-
-                {hasPermission('EDIT_ORDER') && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate('/new-order', { state: { editOrder: order } });
-                    }}
-                    className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
-                    title={t('editOrder')}
-                  >
-                    <Edit className="w-5 h-5" />
-                  </button>
-                )}
-
-                {hasPermission('MARK_ORDER_RECEIVED') && order.status === 'delivered' && !order.receivedByWorker && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      markReceived(order.id);
-                    }}
-                    className="flex items-center gap-2 bg-purple-600 text-white font-bold py-2 px-4 rounded-xl hover:bg-purple-700 shadow-lg shadow-purple-200"
-                  >
-                    <CheckCircle2 className="w-5 h-5" /> {t('markReceived')}
-                  </button>
-                )}
-
-                {hasPermission('UPDATE_ORDER_STATUS') && hasPermission('ACCESS_DELIVERY_EDIT') && (
-                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                    <select
-                      value={order.status}
-                      onChange={(e) => updateStatus(order.id, e.target.value)}
-                      className="p-2 rounded-lg border border-slate-200 text-sm font-medium outline-none"
-                    >
-                      <option value="pending">{t('pending')}</option>
-                      <option value="in_transport">{t('inTransport')}</option>
-                      <option value="delivered">{t('delivered')}</option>
-                      <option value="cancelled">{t('cancelled')}</option>
-                    </select>
-                    
-                    {hasPermission('MANAGE_PAYMENTS') && hasPermission('ACCESS_FINANCE_EDIT') && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addPayment(order);
-                        }}
-                        className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 text-xs font-bold"
-                      >
-                        {t('addPayment')}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </motion.div>
+            </div>
           ))
         )}
       </div>
@@ -4871,13 +5590,15 @@ function ShopManagement() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [newShop, setNewShop] = useState({ code: '', name: '', area: '' });
+  const [selectedArea, setSelectedArea] = useState('All');
 
   useEffect(() => {
     if (!profile) return;
     const unsubscribe = onSnapshot(collection(db, 'shops'), (snapshot) => {
       const allShops = snapshot.docs.map(d => d.data() as Shop);
       if (profile.role === 'worker') {
-        setShops(allShops.filter(s => profile.assignedAreas?.map(a => a.toLowerCase()).includes(s.area.toLowerCase())));
+        const filtered = allShops.filter(s => profile.assignedAreas?.map(a => a.toLowerCase()).includes(s.area.toLowerCase()));
+        setShops(filtered);
       } else {
         setShops(allShops);
       }
@@ -4898,10 +5619,11 @@ function ShopManagement() {
         });
         showToast(t('successUpdated'));
       } else {
-        const areaShort = formattedArea.substring(0, 3).toUpperCase().replace(/\s+/g, '');
-        // Improved 6-char unique code generation
+        const areaShort = formattedArea.substring(0, 2).toUpperCase().replace(/[^A-Z]/g, '');
+        const nameShort = formattedName.substring(0, 2).toUpperCase().replace(/[^A-Z]/g, '');
+        // Improved unique code generation: Area(2) + Name(2) + Unique(2-3)
         const randomStr = Math.random().toString(36).substring(2, 5).toUpperCase();
-        const generatedCode = `${areaShort}${randomStr}`.substring(0, 6);
+        const generatedCode = `${areaShort}${nameShort}${randomStr}`.substring(0, 7);
 
         await setDoc(doc(db, 'shops', generatedCode), {
           ...newShop,
@@ -4927,8 +5649,14 @@ function ShopManagement() {
     setIsAdding(true);
   };
 
-  // Group shops by area
-  const groupedShops = shops.reduce((acc: any, shop) => {
+  const uniqueAreas = Array.from(new Set(shops.map(s => s.area))).sort();
+
+  const filteredShops = selectedArea === 'All' 
+    ? shops 
+    : shops.filter(s => s.area === selectedArea);
+
+  // Group shops by area for display within selected view
+  const groupedShops = filteredShops.reduce((acc: any, shop) => {
     if (!acc[shop.area]) acc[shop.area] = [];
     acc[shop.area].push(shop);
     return acc;
@@ -5001,6 +5729,54 @@ function ShopManagement() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Area selection bar */}
+      <div className="bg-slate-100 p-1.5 md:p-2 rounded-2xl md:rounded-[2rem] border border-slate-200/50">
+        <div className="flex items-center gap-3 w-full relative">
+          <div className="flex items-center gap-1 md:gap-1.5 overflow-x-auto scrollbar-hide no-scrollbar flex-1 py-0.5 px-0.5 snap-x scroll-smooth">
+            <button
+              onClick={() => setSelectedArea('All')}
+              className={cn(
+                "px-4 md:px-6 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap snap-start relative overflow-hidden flex items-center justify-center min-w-[70px] md:min-w-[100px]",
+                selectedArea === 'All' 
+                  ? "text-white shadow-lg shadow-slate-900/20" 
+                  : "text-slate-500 hover:text-slate-800 hover:bg-white bg-white/40 border border-transparent hover:border-slate-200"
+              )}
+            >
+              {selectedArea === 'All' && (
+                <motion.div
+                  layoutId="activeArea"
+                  className="absolute inset-0 bg-slate-900"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                />
+              )}
+              <span className="relative z-10">{t('all')}</span>
+            </button>
+
+            {uniqueAreas.map(area => (
+              <button
+                key={area}
+                onClick={() => setSelectedArea(area)}
+                className={cn(
+                  "px-4 md:px-6 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap relative overflow-hidden flex items-center justify-center min-w-[70px] md:min-w-[100px]",
+                  selectedArea === area 
+                    ? "text-white shadow-lg shadow-slate-900/20" 
+                    : "text-slate-500 hover:text-slate-800 hover:bg-white bg-white/40 border border-transparent hover:border-slate-200"
+                )}
+              >
+                {selectedArea === area && (
+                  <motion.div
+                    layoutId="activeArea"
+                    className="absolute inset-0 bg-slate-900"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <span className="relative z-10">{area}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <div className="space-y-12">
         {Object.entries(groupedShops)

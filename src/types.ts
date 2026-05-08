@@ -83,6 +83,7 @@ export interface ActivityType {
 }
 
 export interface Shop {
+  id: string;
   code: string;
   name: string;
   area: string;
@@ -144,7 +145,7 @@ export interface Transaction {
   shopCode: string;
   amount: number;
   discount?: number;
-  type: 'payment' | 'due_addition' | 'discount';
+  type: 'payment' | 'due_addition' | 'discount' | 'previous_order' | 'previous_payment' | 'previous_due';
   workerUid: string;
   workerName: string;
   date: string;
