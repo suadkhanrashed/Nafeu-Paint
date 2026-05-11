@@ -645,7 +645,7 @@ const translations: Record<Language, Record<string, string>> = {
     selectShop: "দোকান নির্বাচন করুন",
     selectProduct: "পণ্য নির্বাচন করুন",
     selectSize: "সাইজ নির্বাচন করুন",
-    reviewOrder: "অর্ডার পর্যালোচনা",
+    reviewOrder: "অর্ডা�� পর্যালোচনা",
     shopDetails: "দোকানের বিস্তারিত",
     orderHistory: "অর্ডার ইতিহাস",
     viewPastOrders: "অতীতের অর্ডার দেখুন",
@@ -1632,12 +1632,12 @@ function SuspendedScreen() {
 }
 
 function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolean) => void }) {
-  const { user, profile, logout, hasPermission } = useAuth();
-  const { language, setLanguage, t } = useLanguage();
-  const { logoUrl } = useBranding();
   const navigate = useNavigate();
   const location = useLocation();
-
+  const { t, language, setLanguage } = useLanguage();
+  const { hasPermission } = useAuth();
+  const { logoUrl } = useTheme();
+  const [isLargeScreen, setIsLargeScreen] = useState(window.innerWidth >= 1024);
   const [usage, setUsage] = useState<Record<string, number>>(() => {
     try {
       const saved = localStorage.getItem('nav_usage');
@@ -1646,6 +1646,14 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
       return {};
     }
   });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsLargeScreen(window.innerWidth >= 1024);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const trackUsage = (path: string) => {
     const newUsage = { ...usage, [path]: (usage[path] || 0) + 1 };
@@ -1731,11 +1739,11 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
 
       <motion.aside
         initial={{ x: -280 }}
-        animate={{ x: isOpen ? 0 : -280 }}
+        animate={{ x: isLargeScreen ? 0 : (isOpen ? 0 : -280) }}
         transition={{ type: 'spring', damping: 28, stiffness: 250 }}
         className={cn(
           "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 transition-all",
-          "lg:static lg:translate-x-0 lg:w-72"
+          isLargeScreen && "lg:static lg:relative lg:w-72"
         )}
       >
         <div className="p-8 pb-6 flex items-center gap-4 shrink-0 overflow-hidden text-right font-['Georgia']">
