@@ -2103,7 +2103,7 @@ function Dashboard() {
     const shopDataMap: Record<string, number> = {};
     orders.forEach(order => {
       const shop = shops.find(s => s.code === order.shopCode);
-      if (shop?.area === area) {
+      if (shop && shop.area === area) {
         let value = 0;
         if (activeStat === 'monthlySales') {
           const startOfMonth = new Date();
