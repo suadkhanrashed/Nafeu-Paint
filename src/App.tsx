@@ -774,7 +774,7 @@ const translations: Record<Language, Record<string, string>> = {
     areas: "এলাকা",
     myAreas: "আমার এলাকা",
     branding: "ব্র্যান্ডিং",
-    logoSettings: "লোগো সেটিংস",
+    logoSettings: "লোগো স���টিংস",
     logoSettingsDesc: "লোগো আপডেট করুন (সর্বোচ্চ ২০০x২০০ পিএক্স)",
     uploadLogo: "লোগো আপলোড",
     logoRequirements: "৫০০কেবি এর নিচে (PNG, JPG, SVG)",
@@ -1734,8 +1734,8 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
         animate={{ x: isOpen ? 0 : -280 }}
         transition={{ type: 'spring', damping: 28, stiffness: 250 }}
         className={cn(
-          "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 lg:translate-x-0 transition-all",
-          !isOpen && "lg:block lg:translate-x-0"
+          "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 transition-all",
+          "lg:static lg:translate-x-0 lg:w-72"
         )}
       >
         <div className="p-8 pb-6 flex items-center gap-4 shrink-0 overflow-hidden text-right font-['Georgia']">
@@ -1952,10 +1952,10 @@ function MainLayout({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex">
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
       
-      <div className="lg:pl-72">
+      <div className="flex-1">
         <header className="sticky top-0 bg-white/80 backdrop-blur-md border-b-2 border-slate-900 z-30 px-4 md:px-6 lg:px-12 h-16 md:h-20 flex items-center justify-between">
           <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-900">
             <Menu className="w-6 h-6" />
