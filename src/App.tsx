@@ -1636,7 +1636,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const location = useLocation();
   const { t, language, setLanguage } = useLanguage();
   const { hasPermission } = useAuth();
-  const { logoUrl } = useTheme();
+  const { logoUrl } = useBranding();
   const [isLargeScreen, setIsLargeScreen] = useState(window.innerWidth >= 1024);
   const [usage, setUsage] = useState<Record<string, number>>(() => {
     try {
