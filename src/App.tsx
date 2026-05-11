@@ -645,7 +645,7 @@ const translations: Record<Language, Record<string, string>> = {
     selectShop: "দোকান নির্বাচন করুন",
     selectProduct: "পণ্য নির্বাচন করুন",
     selectSize: "সাইজ নির্বাচন করুন",
-    reviewOrder: "অর্ডা�� পর্যালোচনা",
+    reviewOrder: "অর্ডার পর্যালোচনা",
     shopDetails: "দোকানের বিস্তারিত",
     orderHistory: "অর্ডার ইতিহাস",
     viewPastOrders: "অতীতের অর্ডার দেখুন",
@@ -774,7 +774,7 @@ const translations: Record<Language, Record<string, string>> = {
     areas: "এলাকা",
     myAreas: "আমার এলাকা",
     branding: "ব্র্যান্ডিং",
-    logoSettings: "লোগো স���টিংস",
+    logoSettings: "লোগো সেটিংস",
     logoSettingsDesc: "লোগো আপডেট করুন (সর্বোচ্চ ২০০x২০০ পিএক্স)",
     uploadLogo: "লোগো আপলোড",
     logoRequirements: "৫০০কেবি এর নিচে (PNG, JPG, SVG)",
@@ -1632,12 +1632,12 @@ function SuspendedScreen() {
 }
 
 function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolean) => void }) {
+  const { user, profile, logout, hasPermission } = useAuth();
+  const { language, setLanguage, t } = useLanguage();
+  const { logoUrl } = useBranding();
   const navigate = useNavigate();
   const location = useLocation();
-  const { t, language, setLanguage } = useLanguage();
-  const { hasPermission } = useAuth();
-  const { logoUrl } = useBranding();
-  const [isLargeScreen, setIsLargeScreen] = useState(window.innerWidth >= 1024);
+
   const [usage, setUsage] = useState<Record<string, number>>(() => {
     try {
       const saved = localStorage.getItem('nav_usage');
@@ -1646,14 +1646,6 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
       return {};
     }
   });
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsLargeScreen(window.innerWidth >= 1024);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   const trackUsage = (path: string) => {
     const newUsage = { ...usage, [path]: (usage[path] || 0) + 1 };
@@ -1739,11 +1731,11 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
 
       <motion.aside
         initial={{ x: -280 }}
-        animate={{ x: isLargeScreen ? 0 : (isOpen ? 0 : -280) }}
+        animate={{ x: isOpen ? 0 : -280 }}
         transition={{ type: 'spring', damping: 28, stiffness: 250 }}
         className={cn(
-          "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 transition-all",
-          isLargeScreen && "lg:static lg:relative lg:w-72"
+          "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 lg:translate-x-0 transition-all",
+          !isOpen && "lg:block lg:translate-x-0"
         )}
       >
         <div className="p-8 pb-6 flex items-center gap-4 shrink-0 overflow-hidden text-right font-['Georgia']">
@@ -1960,10 +1952,10 @@ function MainLayout({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen">
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
       
-      <div className="flex-1">
+      <div className="lg:pl-72">
         <header className="sticky top-0 bg-white/80 backdrop-blur-md border-b-2 border-slate-900 z-30 px-4 md:px-6 lg:px-12 h-16 md:h-20 flex items-center justify-between">
           <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-900">
             <Menu className="w-6 h-6" />
@@ -2111,7 +2103,7 @@ function Dashboard() {
     const shopDataMap: Record<string, number> = {};
     orders.forEach(order => {
       const shop = shops.find(s => s.code === order.shopCode);
-      if (shop && shop.area === area) {
+      if (shop?.area === area) {
         let value = 0;
         if (activeStat === 'monthlySales') {
           const startOfMonth = new Date();
