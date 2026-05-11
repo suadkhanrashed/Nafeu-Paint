@@ -1734,8 +1734,8 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
         animate={{ x: isOpen ? 0 : -280 }}
         transition={{ type: 'spring', damping: 28, stiffness: 250 }}
         className={cn(
-          "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 transition-all",
-          "lg:static lg:translate-x-0 lg:transform-none lg:animate-none"
+          "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 lg:translate-x-0 transition-all",
+          !isOpen && "lg:block lg:translate-x-0"
         )}
       >
         <div className="p-8 pb-6 flex items-center gap-4 shrink-0 overflow-hidden text-right font-['Georgia']">
