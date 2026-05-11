@@ -37,6 +37,8 @@ export type Permission =
   | 'EDIT_ORDER'
   | 'DELETE_PRODUCT'
   | 'DELETE_SHOP'
+  | 'DELETE_USER'
+  | 'DELETE_TRANSACTION'
   | 'MANAGE_BRANDING'
   // Granular Access Permissions
   | 'ACCESS_FINANCE_VIEW'

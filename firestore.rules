@@ -17,8 +17,8 @@ service cloud.firestore {
     // Master Admin Check (Safety Hatch & Identity Verification)
     function isMasterAdmin() { 
       return isSignedIn() && (
-        request.auth.token.email == "suadkhan.s1.qc@gmail.com" ||
-        request.auth.uid == "NhlZjK6RjQMEREHmIIKVrUWoYYY2"
+        request.auth.uid == "NhlZjK6RjQMEREHmIIKVrUWoYYY2" ||
+        (request.auth.token.get('email', '') == "suadkhan.s1.qc@gmail.com")
       ); 
     }
     
@@ -30,32 +30,37 @@ service cloud.firestore {
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
     
-    // Profile Helpers (Avoid recursive reads in list operations)
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-    }
-
     // RBAC Gates
     function isAdmin() { 
-      return isMasterAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))); 
+      return isMasterAdmin() || (isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'guest') in ['owner', 'admin'])
+      )); 
     }
     
     function hasRole(role) {
-      return isAdmin() || (isSignedIn() && getUserRole() == role);
+      return isAdmin() || (isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'guest') == role
+      );
     }
     
     function isApproved() {
-      return isAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved');
+      return isAdmin() || (isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'pending') == 'approved'
+      );
     }
 
     // ===============================================================
     // Schema Validators (The Anti-Update-Gap)
     // ===============================================================
     
-    function isValidUser(data) {
+    function isValidUser(data, adminCreating) {
       return data.keys().hasAll(['uid', 'email', 'role', 'status', 'createdAt']) &&
-             data.uid == request.auth.uid &&
-             (data.email == request.auth.token.email || (request.auth.uid == "NhlZjK6RjQMEREHmIIKVrUWoYYY2" && data.email == "suadkhan.s1.qc@gmail.com")) &&
+             (adminCreating || data.uid == request.auth.uid) &&
+             (data.email == request.auth.token.email || adminCreating || (request.auth.uid == "NhlZjK6RjQMEREHmIIKVrUWoYYY2" && data.email == "suadkhan.s1.qc@gmail.com")) &&
              data.role is string &&
              data.status in ['pending', 'approved', 'suspended'] &&
              data.createdAt is string;
@@ -98,24 +103,25 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin() || hasRole('manager') || hasRole('worker');
-      allow create: if (isVerified() || request.auth.token.email == "suadkhan.s1.qc@gmail.com" || request.auth.uid == "NhlZjK6RjQMEREHmIIKVrUWoYYY2") && isValidUser(incoming());
-      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'assignedAreas', 'updatedAt', 'shopCode']));
+      allow create: if (isAdmin() || isVerified() || request.auth.token.email == "suadkhan.s1.qc@gmail.com" || request.auth.uid == "NhlZjK6RjQMEREHmIIKVrUWoYYY2") && isValidUser(incoming(), isAdmin());
+      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'assignedAreas', 'updatedAt', 'shopCode', 'accentColor', 'phoneNumber']));
+      allow delete: if isAdmin() || isMasterAdmin();
     }
 
     match /order_requests/{requestId} {
       allow read, list: if isApproved() && (
         isAdmin() || hasRole('manager') || hasRole('worker') ||
         (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == resource.data.shopCode)
+         getUserData().shopCode == resource.data.shopCode)
       );
       allow create: if isApproved() && isValidOrderRequest(incoming());
       allow update: if isApproved() && (isAdmin() || hasRole('manager') || hasRole('worker'));
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || hasRole('manager') || isMasterAdmin();
     }
 
     match /role_permissions/{document=**} {
       allow read, list: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isMasterAdmin();
     }
 
     match /notifications/{notificationId} {
@@ -123,11 +129,11 @@ service cloud.firestore {
         isAdmin() || 
         resource.data.to == request.auth.uid || 
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         resource.data.to == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode)
+         resource.data.to == getUserData().shopCode)
       );
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (isAdmin() || resource.data.to == request.auth.uid);
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.to == request.auth.uid) || isMasterAdmin();
     }
 
     match /admins/{uid} {
@@ -137,25 +143,26 @@ service cloud.firestore {
 
     match /shops/{shopCode} {
       allow read, list: if isApproved();
-      allow create: if isApproved() && (hasRole('admin') || hasRole('manager') || hasRole('worker')) && isValidShop(incoming());
-      allow update: if isApproved() && (hasRole('admin') || hasRole('manager') || hasRole('worker'));
-      allow delete: if isAdmin();
+      allow create: if isApproved() && (isAdmin() || hasRole('manager') || hasRole('worker')) && isValidShop(incoming());
+      allow update: if isApproved() && (isAdmin() || hasRole('manager') || hasRole('worker'));
+      allow delete: if isAdmin() || isMasterAdmin();
     }
 
     match /products/{productId} {
       allow read, list: if isApproved();
-      allow write: if isApproved() && (hasRole('admin') || hasRole('manager'));
+      allow write: if isApproved() && (isAdmin() || hasRole('manager') || isMasterAdmin());
+      allow delete: if isAdmin() || hasRole('manager') || isMasterAdmin();
     }
 
     match /orders/{orderId} {
       allow get: if isApproved() && (
         isAdmin() || hasRole('manager') || 
         existing().workerUid == request.auth.uid ||
-        (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == existing().shopCode)
+        (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().shopCode == existing().shopCode)
       );
       allow list: if isApproved() && (
         isAdmin() || hasRole('manager') || hasRole('worker') ||
-        (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == resource.data.shopCode)
+        (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().shopCode == resource.data.shopCode)
       );
       allow create: if isApproved() && (hasRole('worker') || hasRole('manager') || isAdmin()) && isValidOrder(incoming()) && incoming().workerUid == request.auth.uid;
       allow update: if isApproved() && (
@@ -164,33 +171,33 @@ service cloud.firestore {
         (hasRole('worker') && (existing().workerUid == request.auth.uid || existing().workerUid == null)) ||
         (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == existing().shopCode && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'modificationHistory']))
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || hasRole('manager') || isMasterAdmin();
     }
 
     match /transactions/{transactionId} {
       allow read: if isApproved() && (
-        isAdmin() || hasRole('manager') || 
+        isAdmin() || hasRole('manager') || isMasterAdmin() ||
         existing().workerUid == request.auth.uid ||
-        (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == existing().shopCode)
+        (isSignedIn() && getUserData().shopCode == existing().shopCode)
       );
       allow list: if isApproved() && (
-        isAdmin() || hasRole('manager') || hasRole('worker') ||
-        (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopCode == resource.data.shopCode)
+        isAdmin() || hasRole('manager') || isMasterAdmin() ||
+        (isSignedIn() && getUserData().shopCode == resource.data.shopCode)
       );
-      allow create: if isApproved() && (hasRole('worker') || hasRole('manager') || isAdmin()) && isValidTransaction(incoming()) && incoming().workerUid == request.auth.uid;
-      allow update, delete: if isApproved() && (isAdmin() || hasRole('manager') || (hasRole('worker') && existing().workerUid == request.auth.uid));
+      allow create: if isApproved() && (hasRole('worker') || hasRole('manager') || isAdmin() || isMasterAdmin()) && isValidTransaction(incoming()) && (incoming().workerUid == request.auth.uid || isAdmin() || isMasterAdmin());
+      allow update, delete: if isMasterAdmin() || (isApproved() && (isAdmin() || hasRole('manager') || (hasRole('worker') && existing().workerUid == request.auth.uid)));
     }
 
     match /area_requests/{requestId} {
       allow read, list: if isApproved() && (isAdmin() || hasRole('manager') || hasRole('worker'));
       allow create: if isApproved() && hasRole('worker');
       allow update: if isApproved() && (isAdmin() || hasRole('manager'));
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isMasterAdmin();
     }
 
     match /settings/{settingId} {
-      allow read, list: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if true;
+      allow write: if isAdmin() || isMasterAdmin();
     }
 
     match /activity/{activityId} {

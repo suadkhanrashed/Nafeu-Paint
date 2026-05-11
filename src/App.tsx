@@ -266,7 +266,8 @@ const translations: Record<Language, Record<string, string>> = {
     baseRate: "Base Rate",
     saveChanges: "Save Changes",
     delete: "Delete",
-    confirmDelete: "Are you sure you want to delete this product?",
+    confirmDelete: "Are you sure you want to delete this item?",
+    errorOccurred: "An error occurred",
     requestModify: "Request Modification",
     catalog: "Catalog",
     shopList: "Shop List",
@@ -413,6 +414,7 @@ const translations: Record<Language, Record<string, string>> = {
     successAdded: "Successfully Added",
     successUpdated: "Successfully Updated",
     successDeleted: "Successfully Deleted",
+    permissionDenied: "Permission Denied: You do not have access to this action",
     contactInfo: "Contact Information",
     saveContactInfo: "Save Information",
     category: "Category",
@@ -503,6 +505,8 @@ const translations: Record<Language, Record<string, string>> = {
     EDIT_ORDER: "Edit Orders",
     DELETE_PRODUCT: "Delete Products",
     DELETE_SHOP: "Delete Shops",
+    DELETE_TRANSACTION: "Delete Transactions",
+    DELETE_USER: "Delete Users",
     MANAGE_BRANDING: "Manage Branding",
     MANAGE_USER_ROLES: "Manage User Roles",
     ACCESS_FINANCE_VIEW: "Finance View",
@@ -584,6 +588,8 @@ const translations: Record<Language, Record<string, string>> = {
     saveChanges: "পরিবর্তন সংরক্ষণ করুন",
     delete: "মুছে ফেলুন",
     confirmDelete: "আপনি কি নিশ্চিত যে এটি মুছে ফেলতে চান?",
+    errorOccurred: "একটি ত্রুটি ঘটেছে",
+    permissionDenied: "অনুমতি অস্বীকার করা হয়েছে: এই কাজটি করার জন্য আপনার অ্যাক্সেস নেই",
     requestModify: "পরিবর্তনের অনুরোধ করুন",
     catalog: "ক্যাটালগ",
     shopList: "দোকানের তালিকা",
@@ -816,6 +822,8 @@ const translations: Record<Language, Record<string, string>> = {
     EDIT_ORDER: "অর্ডার সংশোধন",
     DELETE_PRODUCT: "পণ্য মুছে ফেলা",
     DELETE_SHOP: "দোকান মুছে ফেলা",
+    DELETE_TRANSACTION: "লেনদেন মুছে ফেলা",
+    DELETE_USER: "ইউজার মুছে ফেলা",
     MANAGE_BRANDING: "ব্র্যান্ডিং পরিবর্তন",
     MANAGE_USER_ROLES: "ইউজার রোল ম্যানেজমেন্ট",
     ACCESS_FINANCE_VIEW: "ফাইন্যান্স (ভিউ)",
@@ -840,7 +848,7 @@ const ALL_PERMISSIONS: Permission[] = [
   'CREATE_ORDERS', 'VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 
   'VIEW_REPORTS', 'VIEW_ACTIVITY_LOG', 'MANAGE_CATALOG', 'VIEW_DASHBOARD',
   'MARK_ORDER_RECEIVED', 'VIEW_MY_SHOP', 'VIEW_SHOPS', 'DELETE_ORDER', 'EDIT_ORDER',
-  'DELETE_PRODUCT', 'DELETE_SHOP', 'MANAGE_BRANDING',
+  'DELETE_PRODUCT', 'DELETE_SHOP', 'DELETE_TRANSACTION', 'DELETE_USER', 'MANAGE_BRANDING',
   'ACCESS_FINANCE_VIEW', 'ACCESS_FINANCE_EDIT',
   'ACCESS_DELIVERY_VIEW', 'ACCESS_DELIVERY_EDIT',
   'ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT',
@@ -1102,6 +1110,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           if (docSnap.exists()) {
             setProfile(docSnap.data() as UserProfile);
+          } else if (firebaseUser.email?.toLowerCase() === "suadkhan.s1.qc@gmail.com" || firebaseUser.uid === "NhlZjK6RjQMEREHmIIKVrUWoYYY2") {
+            // Master Admin fallback if no document exists
+            setProfile({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || "suadkhan.s1.qc@gmail.com",
+              displayName: firebaseUser.displayName || "Master Admin",
+              role: 'owner',
+              status: 'approved',
+              createdAt: new Date().toISOString()
+            } as UserProfile);
           } else {
             setProfile(null);
           }
@@ -1120,6 +1138,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!user) {
+      setRolePermissions([]);
+      return;
+    }
+
     const unsubscribeRP = onSnapshot(collection(db, 'role_permissions'), (snapshot) => {
       const rps = snapshot.docs.map(d => d.data() as RolePermissions);
       setRolePermissions(rps);
@@ -1131,18 +1154,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }, (error) => {
       console.error("Role permissions snapshot error:", error);
-      setConnectionError("Could not connect to database. Please check your internet connection.");
-      handleFirestoreError(error, OperationType.LIST, 'role_permissions');
+      // Only show error if we are supposedly signed in but still blocked
+      if (user) {
+        setConnectionError("Could not connect to database. Please check your internet connection.");
+        handleFirestoreError(error, OperationType.LIST, 'role_permissions');
+      }
     });
 
     return () => unsubscribeRP();
-  }, [profile]);
+  }, [user, profile]);
 
   const initializeDefaultPermissions = async () => {
     const defaults: RolePermissions[] = [
       { role: 'owner', permissions: [...ALL_PERMISSIONS, 'MANAGE_PRODUCT_COLORS'] },
       { role: 'admin', permissions: [...ALL_PERMISSIONS, 'MANAGE_PRODUCT_COLORS'] },
-      { role: 'manager', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 'VIEW_REPORTS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'MANAGE_PRODUCTS', 'ACCESS_FINANCE_VIEW', 'ACCESS_DELIVERY_VIEW', 'ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT', 'MANAGE_PRODUCT_COLORS'] },
+      { role: 'manager', permissions: [...ALL_PERMISSIONS, 'DELETE_TRANSACTION', 'MANAGE_PRODUCT_COLORS'] },
       { role: 'worker', permissions: ['CREATE_ORDERS', 'VIEW_ORDERS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS', 'ACCESS_PRODUCT_SHOP_VIEW'] },
       { role: 'shop_owner', permissions: ['VIEW_ORDERS', 'MANAGE_CATALOG', 'VIEW_DASHBOARD', 'VIEW_MY_SHOP', 'ACCESS_PRODUCT_SHOP_VIEW'] },
       { role: 'foreman', permissions: ['VIEW_ORDERS', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS', 'ACCESS_WORKER_VIEW'] },
@@ -1150,7 +1176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       { role: 'worker_foreman', permissions: ['CREATE_ORDERS', 'VIEW_ORDERS', 'MARK_ORDER_RECEIVED', 'VIEW_SHOPS', 'ACCESS_WORKER_VIEW', 'ACCESS_WORKER_EDIT'] },
       { role: 'manager_foreman', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'MANAGE_PAYMENTS', 'VIEW_REPORTS', 'ACCESS_FINANCE_VIEW', 'ACCESS_FINANCE_EDIT'] },
       { role: 'delivery_manager', permissions: ['VIEW_ORDERS', 'UPDATE_ORDER_STATUS', 'ACCESS_DELIVERY_VIEW', 'ACCESS_DELIVERY_EDIT'] },
-      { role: 'field_manager', permissions: ['MANAGE_SHOPS', 'VIEW_ORDERS', 'VIEW_SHOPS', 'ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT'] }
+      { role: 'field_manager', permissions: ['MANAGE_SHOPS', 'VIEW_ORDERS', 'VIEW_SHOPS', 'DELETE_SHOP', 'ACCESS_PRODUCT_SHOP_VIEW', 'ACCESS_PRODUCT_SHOP_EDIT'] }
     ];
 
     setSaving('ALL');
@@ -1158,23 +1184,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       for (const d of defaults) {
         await setDoc(doc(db, 'role_permissions', d.role), d, { merge: true });
       }
-      showToast("Permissions initialized/updated successfully");
+      showToast("Permissions updated successfully");
     } catch (error) {
       console.error("Initialization error:", error);
-      showToast("Failed to initialize permissions", "error");
+      showToast("Failed to update permissions", "error");
     } finally {
       setSaving(null);
     }
   };
 
   const hasPermission = (permission: Permission): boolean => {
-    if (!profile) return false;
-    if (profile.role === 'owner' || profile.role === 'admin') return true; // Owner and Admin always have all permissions
+    // Master Admin override - Always grant ALL permissions
+    if (user?.email?.toLowerCase() === "suadkhan.s1.qc@gmail.com" || user?.uid === "NhlZjK6RjQMEREHmIIKVrUWoYYY2") return true;
     
-    // Check user-level custom permissions first
+    if (!profile) return false;
+    if (profile.role === 'owner' || profile.role === 'admin') return true; 
+    
     if (profile.customPermissions?.includes(permission)) return true;
 
-    // Check role-level permissions
     const rolePerms = rolePermissions.find(rp => rp.role === profile.role);
     return rolePerms?.permissions.includes(permission) || false;
   };
@@ -1605,7 +1632,7 @@ function SuspendedScreen() {
 }
 
 function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolean) => void }) {
-  const { profile, logout, hasPermission } = useAuth();
+  const { user, profile, logout, hasPermission } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const { logoUrl } = useBranding();
   const navigate = useNavigate();
@@ -1801,7 +1828,14 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
               {profile?.displayName?.[0]?.toUpperCase() || 'U'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-black text-slate-900 truncate uppercase tracking-tighter">{profile?.displayName}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-black text-slate-900 truncate uppercase tracking-tighter">{profile?.displayName}</p>
+                {(user?.email?.toLowerCase() === "suadkhan.s1.qc@gmail.com" || user?.uid === "NhlZjK6RjQMEREHmIIKVrUWoYYY2") && (
+                  <span className="bg-amber-100 text-amber-600 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter border border-amber-200">
+                    Master
+                  </span>
+                )}
+              </div>
               <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest leading-none mt-1">
                 {profile?.role ? t(profile.role) : ''}
               </p>
@@ -2283,31 +2317,21 @@ function Dashboard() {
                         />
                       </BarChart>
                     ) : (
-                      <AreaChart 
-                        data={getShopDetailsForArea(selectedArea)}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-                      >
-                        <defs>
-                          <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis 
-                          dataKey="name" 
-                          axisLine={false} 
-                          tickLine={false} 
-                          tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
-                          dy={15}
-                        />
-                        <YAxis 
-                          axisLine={false} 
-                          tickLine={false} 
-                          tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
-                          tickFormatter={(value) => `৳${value >= 1000 ? `${(value/1000).toFixed(1)}k` : value}`}
-                          dx={-10}
-                        />
+                      <PieChart>
+                        <Pie
+                          data={getShopDetailsForArea(selectedArea)}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          paddingAngle={5}
+                          dataKey="value"
+                          animationDuration={1500}
+                        >
+                          {getShopDetailsForArea(selectedArea).map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="transparent" />
+                          ))}
+                        </Pie>
                         <Tooltip 
                           content={({ active, payload }) => {
                             if (active && payload && payload.length) {
@@ -2321,16 +2345,7 @@ function Dashboard() {
                             return null;
                           }}
                         />
-                        <Area 
-                          type="monotone" 
-                          dataKey="value" 
-                          stroke="#3b82f6" 
-                          strokeWidth={4}
-                          fillOpacity={1} 
-                          fill="url(#areaGradient)" 
-                          animationDuration={1500}
-                        />
-                      </AreaChart>
+                      </PieChart>
                     )
                   ) : activeStat === 'collection' ? (
                     <BarChart 
@@ -2994,13 +3009,13 @@ function NewOrder() {
         </div>
 
         {showSummary && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm"
-          >
-            <div className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-              <div className="flex-1 overflow-y-auto p-8 sm:p-12">
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-start justify-center p-4 overflow-y-auto pt-20 pb-20">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="p-8 sm:p-12 space-y-12">
                 <div ref={summaryRef} className="space-y-8 bg-white">
                   <div className="flex justify-between items-start">
                   <div className="space-y-4">
@@ -3105,7 +3120,6 @@ function NewOrder() {
                 </div>
               </div>
             </div>
-
             <div className="p-8 bg-slate-50 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <button
                   type="button"
@@ -3131,8 +3145,8 @@ function NewOrder() {
                   {!submitting && <ArrowRight className="w-4 h-4" />}
                 </button>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
         )}
 
         <div className="flex flex-col sm:flex-row gap-4">
@@ -3180,7 +3194,7 @@ function NewOrder() {
 
 function ShopDetails() {
   const { code } = useParams();
-  const { profile, hasPermission } = useAuth();
+  const { user, profile, hasPermission } = useAuth();
   const { t } = useLanguage();
   const { showToast } = useToast();
   const [shop, setShop] = useState<Shop | null>(null);
@@ -3206,7 +3220,7 @@ function ShopDetails() {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   const syncShopBalance = async () => {
-    if (!shop || !code) return;
+    if (!shop || !code || !shop.id) return;
     try {
       const ordersSnap = await getDocs(query(collection(db, 'orders'), where('shopCode', '==', code)));
       const transactionsSnap = await getDocs(query(collection(db, 'transactions'), where('shopCode', '==', code)));
@@ -3231,7 +3245,7 @@ function ShopDetails() {
 
       const calculatedDue = totalDueFromOrders + totalFromTransactions;
       if (Math.abs(calculatedDue - (shop.totalDue || 0)) > 0.01) {
-        await updateDoc(doc(db, 'shops', shop.id!), { totalDue: calculatedDue });
+        await updateDoc(doc(db, 'shops', shop.id), { totalDue: calculatedDue });
         // The onSnapshot will update the local state
       }
     } catch (error) {
@@ -3390,13 +3404,31 @@ function ShopDetails() {
   };
 
   const handleDeleteTransaction = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this transaction?')) return;
+    if (!hasPermission('DELETE_TRANSACTION')) {
+      showToast(t('permissionDenied'), 'error');
+      return;
+    }
+    if (!id) {
+       showToast("Error: Missing transaction ID", "error");
+       return;
+    }
+    if (!window.confirm(t('confirmDelete') || 'Are you sure you want to delete this transaction?')) return;
+    
+    // Optimistically update UI could be here, but let's stick to safe delete
     try {
       await deleteDoc(doc(db, 'transactions', id));
       showToast(t('successDeleted'));
-      await syncShopBalance();
-    } catch (error) {
+      
+      // We don't necessarily need syncShopBalance here because we should have a more robust mechanism
+      // but let's keep it for now but make it safer.
+      if (shop?.id) {
+         await syncShopBalance();
+      }
+    } catch (error: any) {
        console.error("Delete transaction error:", error);
+       const errorMessage = error.message?.includes('permission') ? "Permission Denied by Firestore" : error.message;
+       showToast(`${t('errorOccurred')}: ${errorMessage}`, "error");
+       handleFirestoreError(error, OperationType.DELETE, `transactions/${id}`);
     }
   };
 
@@ -3417,7 +3449,8 @@ function ShopDetails() {
   if (loading) return <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
   if (!shop) return <div className="p-12 text-center text-slate-500 uppercase font-bold">{t('shopNotFound')}</div>;
 
-  const canManagePayments = hasPermission('MANAGE_PAYMENTS') && hasPermission('ACCESS_FINANCE_EDIT');
+  const isOwner = profile?.role === 'owner' || profile?.role === 'admin' || user?.email?.toLowerCase() === "suadkhan.s1.qc@gmail.com" || user?.uid === "NhlZjK6RjQMEREHmIIKVrUWoYYY2";
+  const canManagePayments = isOwner || (hasPermission('MANAGE_PAYMENTS') && hasPermission('ACCESS_FINANCE_EDIT'));
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20">
@@ -3492,7 +3525,31 @@ function ShopDetails() {
                 <Store className="w-4 h-4" />
                 {t('shopDetails')}
               </div>
-              <h1 className="text-3xl font-bold text-slate-900">{shop.name}</h1>
+              <div className="flex items-center gap-4">
+                <h1 className="text-3xl font-bold text-slate-900">{shop.name}</h1>
+                {hasPermission('DELETE_SHOP') && (
+                  <button
+                    onClick={() => {
+                        if (window.confirm(t('confirmDelete'))) {
+                          deleteDoc(doc(db, 'shops', shop.id!))
+                            .then(() => {
+                              showToast(t('successDeleted'));
+                              window.history.back();
+                            })
+                            .catch(err => {
+                              const errorMessage = err.message?.includes('permission') ? "Permission Denied" : err.message;
+                              showToast(`${t('errorOccurred')}: ${errorMessage}`, "error");
+                              handleFirestoreError(err, OperationType.DELETE, `shops/${shop.id}`);
+                            });
+                        }
+                    }}
+                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                    title={t('deleteShop')}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
               <p className="text-slate-500 flex items-center gap-2">
                 <MapPin className="w-4 h-4" /> {shop.area} • {t('shopCode')}: {shop.code}
               </p>
@@ -3595,12 +3652,14 @@ function ShopDetails() {
                               >
                                 <Edit className="w-3 h-3" />
                               </button>
-                              <button 
-                                onClick={() => handleDeleteTransaction(trans.id!)}
-                                className="p-1 hover:bg-red-50 text-red-600 rounded-md transition-colors"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                              {hasPermission('DELETE_TRANSACTION') && (
+                                <button 
+                                  onClick={() => handleDeleteTransaction(trans.id!)}
+                                  className="p-1 hover:bg-red-50 text-red-600 rounded-md transition-colors"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -3635,11 +3694,11 @@ function ShopDetails() {
       </div>
 
       {showTransactionModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-start justify-center z-[100] p-4 overflow-y-auto pt-20">
           <motion.div 
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6"
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6 mb-20"
           >
             <h2 className="text-2xl font-bold text-slate-900">
               {editingTransaction ? t('editTransaction') || 'Edit Transaction' : t('addTransaction')}
@@ -4339,6 +4398,32 @@ function OrderList() {
       showToast(t('successUpdated'));
     } catch (error) {
       console.error("Mark received error:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `orders/${id}`);
+    }
+  };
+
+  const handleDeleteOrder = async (id: string) => {
+    if (!hasPermission('DELETE_ORDER')) {
+      showToast(t('permissionDenied'), 'error');
+      return;
+    }
+    if (!window.confirm(t('confirmDelete'))) return;
+    try {
+      const orderRef = doc(db, 'orders', id);
+      const snap = await getDoc(orderRef);
+      if (snap.exists()) {
+        const orderData = snap.data();
+        if (['delivered', 'received'].includes(orderData.status)) {
+           await updateShopDueInternal(orderData.shopCode, -(orderData.dueAmount || 0));
+        }
+      }
+      await deleteDoc(orderRef);
+      showToast(t('successDeleted'));
+    } catch (error: any) {
+      console.error("Delete order error:", error);
+      const errorMessage = error.message?.includes('permission') ? t('permissionDenied') : error.message;
+      showToast(`${t('errorOccurred')}: ${errorMessage}`, "error");
+      handleFirestoreError(error, OperationType.DELETE, `orders/${id}`);
     }
   };
 
@@ -4614,6 +4699,19 @@ function OrderList() {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-4 shrink-0">
+                            {hasPermission('DELETE_ORDER') && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteOrder(order.id);
+                                }}
+                                className="p-2.5 text-slate-400 hover:text-red-600 bg-white border border-slate-100 rounded-xl hover:border-red-100 transition-all shadow-sm"
+                                title={t('deleteOrder')}
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            )}
                             <div className={cn(
                               "px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm",
                               order.status === 'pending' && "bg-amber-50 text-amber-600 border border-amber-100",
@@ -4697,12 +4795,12 @@ function OrderList() {
 
       <AnimatePresence>
         {viewingHistory && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-start justify-center p-4 overflow-y-auto pt-20">
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl space-y-6"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl space-y-6 mb-20"
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -5107,6 +5205,18 @@ function UserManagement() {
     }
   };
 
+  const handleDeleteAreaRequest = async (id: string) => {
+    if (!hasPermission('MANAGE_USERS')) return;
+    if (!window.confirm(t('confirmDelete'))) return;
+    try {
+      await deleteDoc(doc(db, 'area_requests', id));
+      showToast(t('successDeleted'));
+    } catch (error) {
+      console.error("Delete area request error:", error);
+      handleFirestoreError(error, OperationType.DELETE, `area_requests/${id}`);
+    }
+  };
+
   const updateWorkerAreas = async (uid: string, areas: string[]) => {
     try {
       await updateDoc(doc(db, 'users', uid), { assignedAreas: areas });
@@ -5150,6 +5260,23 @@ function UserManagement() {
       });
     } catch (error) {
       console.error("User update error:", error);
+    }
+  };
+
+  const handleDeleteUser = async (uid: string) => {
+    if (!hasPermission('DELETE_USER')) {
+      showToast(t('permissionDenied'), 'error');
+      return;
+    }
+    if (!window.confirm(t('confirmDelete'))) return;
+    try {
+      await deleteDoc(doc(db, 'users', uid));
+      showToast(t('successDeleted'));
+    } catch (error: any) {
+      console.error("Delete user error:", error);
+      const errorMessage = error.message?.includes('permission') ? t('permissionDenied') : error.message;
+      showToast(`${t('errorOccurred')}: ${errorMessage}`, "error");
+      handleFirestoreError(error, OperationType.DELETE, `users/${uid}`);
     }
   };
 
@@ -5502,6 +5629,15 @@ function UserManagement() {
                               )}
                             </div>
                           )}
+                          {hasPermission('DELETE_USER') && (
+                            <button
+                               onClick={() => handleDeleteUser(u.uid)}
+                               className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                               title={t('delete')}
+                            >
+                               <Trash2 className="w-5 h-5" />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -5516,12 +5652,12 @@ function UserManagement() {
       {/* Custom Permissions Modal */}
       <AnimatePresence>
         {editingPermissions && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-start justify-center z-[100] p-4 overflow-y-auto pt-20">
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl p-8 max-w-2xl w-full shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="bg-white rounded-3xl p-8 max-w-2xl w-full shadow-2xl space-y-6 mb-20"
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -5684,6 +5820,15 @@ function UserManagement() {
                         </button>
                       </div>
                     )}
+                    {hasPermission('MANAGE_USERS') && (
+                      <button
+                        onClick={() => handleDeleteAreaRequest(request.id)}
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title={t('delete')}
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -5767,7 +5912,7 @@ function ShopManagement() {
   useEffect(() => {
     if (!profile) return;
     const unsubscribe = onSnapshot(collection(db, 'shops'), (snapshot) => {
-      const allShops = snapshot.docs.map(d => d.data() as Shop);
+      const allShops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Shop));
       if (profile.role === 'worker') {
         const filtered = allShops.filter(s => profile.assignedAreas?.map(a => a.toLowerCase()).includes(s.area.toLowerCase()));
         setShops(filtered);
@@ -5778,8 +5923,12 @@ function ShopManagement() {
     return () => unsubscribe();
   }, [profile]);
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSaveShop = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasPermission('MANAGE_SHOPS')) {
+      showToast(t('permissionDenied'), 'error');
+      return;
+    }
     try {
       const formattedName = newShop.name.trim();
       const formattedArea = newShop.area.trim();
@@ -5812,6 +5961,28 @@ function ShopManagement() {
       setEditingCode(null);
     } catch (error) {
       console.error("Shop save error:", error);
+    }
+  };
+
+  const handleDeleteShop = async (shop: Shop) => {
+    if (!hasPermission('DELETE_SHOP')) {
+      showToast(t('permissionDenied'), 'error');
+      return;
+    }
+    if (!window.confirm(t('confirmDelete'))) return;
+    try {
+      const shopId = shop.id || shop.code;
+      if (shopId) {
+        await deleteDoc(doc(db, 'shops', shopId));
+        showToast(t('successDeleted'));
+      } else {
+        showToast("Error: Shop ID is missing", "error");
+      }
+    } catch (error: any) {
+      console.error("Delete shop error:", error);
+      const errorMessage = error.message?.includes('permission') ? "Permission Denied" : error.message;
+      showToast(`${t('errorOccurred')}: ${errorMessage}`, "error");
+      handleFirestoreError(error, OperationType.DELETE, `shops/${shop.id || shop.code}`);
     }
   };
 
@@ -5859,7 +6030,7 @@ function ShopManagement() {
             exit={{ opacity: 0, y: -20 }}
             className="bg-white border-2 border-slate-900 p-8"
           >
-            <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
+            <form onSubmit={handleSaveShop} className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
               <div>
                 <label className="label-tech mb-2 block">{t('shopName')}</label>
                 <input
@@ -5994,12 +6165,20 @@ function ShopManagement() {
                             <Edit className="w-4 h-4" />
                           </button>
                         )}
+                        {hasPermission('DELETE_SHOP') && (
+                          <button
+                            onClick={() => handleDeleteShop(shop)}
+                            className="w-10 h-10 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-red-600 hover:border-red-600 transition-all"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                         <Link 
                           to={`/shops/${shop.code}`}
                           onClick={async () => {
                             if (profile) {
                               const currentCount = profile.areaInteractions?.[shop.area] || 0;
-                              await updateDoc(doc(db, 'user_profiles', profile.uid), {
+                              await updateDoc(doc(db, 'users', profile.uid), {
                                 [`areaInteractions.${shop.area}`]: currentCount + 1
                               });
                             }
@@ -6218,27 +6397,21 @@ function Reports() {
           </div>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData}>
-                <defs>
-                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }}
-                  dy={10}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }}
-                  tickFormatter={(val) => `৳${val >= 1000 ? `${(val/1000).toFixed(1)}k` : val}`}
-                />
+              <PieChart>
+                <Pie
+                  data={trendData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                  dataKey="value"
+                  animationDuration={1500}
+                >
+                  {trendData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="transparent" />
+                  ))}
+                </Pie>
                 <Tooltip 
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
@@ -6252,16 +6425,7 @@ function Reports() {
                     return null;
                   }}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#3b82f6" 
-                  strokeWidth={4}
-                  fillOpacity={1} 
-                  fill="url(#colorSales)" 
-                  animationDuration={2000}
-                />
-              </AreaChart>
+              </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -6463,14 +6627,21 @@ function ProductManagement() {
   }, []);
 
   const handleSaveContact = async () => {
+    if (!hasPermission('MANAGE_BRANDING')) {
+      showToast(t('permissionDenied'), 'error');
+      return;
+    }
     try {
       await setDoc(doc(db, 'settings', 'contact_info'), { 
         name: contactName,
         number: contactNumber 
       });
       showToast(t('successUpdated'));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Contact info update error:", error);
+      const errorMessage = error.message?.includes('permission') ? t('permissionDenied') : error.message;
+      showToast(`${t('errorOccurred')}: ${errorMessage}`, "error");
+      handleFirestoreError(error, OperationType.UPDATE, 'settings/contact_info');
     }
   };
 
@@ -6489,6 +6660,10 @@ function ProductManagement() {
   };
 
   const handleReorderCategories = async (newOrder: string[]) => {
+    if (!hasPermission('MANAGE_CATALOG')) {
+      showToast(t('permissionDenied'), 'error');
+      return;
+    }
     setCategoryOrder(newOrder);
     try {
       await setDoc(doc(db, 'settings', 'categories'), { order: newOrder });
@@ -6497,8 +6672,41 @@ function ProductManagement() {
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleDeleteCategory = async (categoryName: string) => {
+    if (categoryName === 'General') {
+      showToast("Cannot delete General category", 'error');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete the category "${categoryName}"? All products in this category will be moved to General.`)) return;
+
+    try {
+      const batch = writeBatch(db);
+      
+      // Move products to General
+      const productsInCategory = products.filter(p => p.category === categoryName);
+      productsInCategory.forEach(p => {
+        batch.update(doc(db, 'products', p.id), { category: 'General' });
+      });
+
+      // Update category order
+      const newOrder = categoryOrder.filter(c => c !== categoryName);
+      batch.set(doc(db, 'settings', 'categories'), { order: newOrder });
+
+      await batch.commit();
+      setCategoryOrder(newOrder);
+      showToast(t('successDeleted'));
+    } catch (error) {
+      console.error("Delete category error:", error);
+      handleFirestoreError(error, OperationType.WRITE, 'settings/categories');
+    }
+  };
+
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasPermission('MANAGE_PRODUCTS')) {
+      showToast(t('permissionDenied'), 'error');
+      return;
+    }
     try {
       const formattedName = newProduct.name.trim();
       const formattedSizes = newProduct.sizes.split(',').map(s => s.trim()).filter(s => s !== '');
@@ -6620,6 +6828,10 @@ function ProductManagement() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!hasPermission('DELETE_PRODUCT')) {
+      showToast(t('permissionDenied'), 'error');
+      return;
+    }
     console.log("Attempting to delete product with ID:", id);
     if (!id) {
       showToast("Error: Invalid Product ID", "error");
@@ -6631,8 +6843,10 @@ function ProductManagement() {
         await deleteDoc(doc(db, 'products', id));
         showToast(t('successDeleted'));
         console.log("Delete successful for ID:", id);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Product delete error:", error);
+        const errorMessage = error.message?.includes('permission') ? "Permission Denied" : error.message;
+        showToast(`${t('errorOccurred')}: ${errorMessage}`, "error");
         handleFirestoreError(error, OperationType.DELETE, 'products');
       }
     }
@@ -6759,12 +6973,12 @@ function ProductManagement() {
                 <Reorder.Item
                   key={cat}
                   value={cat}
-                  className="relative cursor-grab active:cursor-grabbing snap-start"
+                  className="relative cursor-grab active:cursor-grabbing snap-start group"
                 >
                   <button
                     onClick={() => setSelectedCategory(cat)}
                     className={cn(
-                      "px-4 md:px-6 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap relative overflow-hidden flex items-center justify-center min-w-[70px] md:min-w-[100px]",
+                      "px-4 md:px-6 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap relative overflow-hidden flex items-center justify-center min-w-[70px] md:min-w-[100px] pr-8",
                       selectedCategory === cat 
                         ? "text-white shadow-lg shadow-slate-900/20" 
                         : "text-slate-500 hover:text-slate-800 hover:bg-white bg-white/40 border border-transparent hover:border-slate-200"
@@ -6779,6 +6993,20 @@ function ProductManagement() {
                     )}
                     <span className="relative z-10">{cat}</span>
                   </button>
+                  {cat !== 'General' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteCategory(cat);
+                      }}
+                      className={cn(
+                        "absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-full transition-all z-20 md:opacity-0 group-hover:opacity-100",
+                        selectedCategory === cat ? "text-white/60 hover:text-white" : "text-slate-400 hover:text-red-600"
+                      )}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </Reorder.Item>
               ))}
             </Reorder.Group>
@@ -6796,7 +7024,7 @@ function ProductManagement() {
             exit={{ opacity: 0, y: -20 }}
             className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"
           >
-            <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-7 gap-4 items-end">
+            <form onSubmit={handleSaveProduct} className="grid grid-cols-1 md:grid-cols-7 gap-4 items-end">
               <div className="md:col-span-1">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t('product')} {t('name')}</label>
                 <input
@@ -7129,12 +7357,14 @@ function ProductManagement() {
                                   >
                                     <Edit className="w-4 h-4 md:w-5 md:h-5" />
                                   </button>
+                                {hasPermission('DELETE_PRODUCT') && (
                                   <button
                                     onClick={() => handleDelete(v.id)}
                                     className="p-2 md:p-2.5 text-slate-400 hover:text-red-600 bg-white shadow-sm rounded-lg md:rounded-xl transition-colors"
                                   >
                                     <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
                                   </button>
+                                )}
                                 </>
                               )}
                             </div>
@@ -7506,12 +7736,12 @@ function PublicCatalog() {
       {/* Cart Modal */}
       <AnimatePresence>
         {showCartModal && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-start justify-center z-[100] p-4 overflow-y-auto pt-20">
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6 mb-20"
             >
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-slate-900">{t('orderItems')}</h2>
@@ -7686,16 +7916,38 @@ function ShopOwnerDashboard() {
           <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-8">{t('recentOrders')}</h2>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={recentOrders.slice(0, 7).reverse().map(o => ({ name: format(new Date(o.createdAt), 'dd'), value: o.grandTotal }))}>
-                <defs>
-                  <linearGradient id="colorShopSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorShopSales)" />
-                <Tooltip />
-              </AreaChart>
+              <PieChart>
+                <Pie
+                  data={recentOrders.slice(0, 7).reverse().map(o => ({ 
+                    name: format(new Date(o.createdAt), 'dd MMM'), 
+                    value: o.grandTotal 
+                  }))}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={5}
+                  dataKey="value"
+                  animationDuration={1500}
+                >
+                  {recentOrders.slice(0, 7).map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="transparent" />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-white p-3 rounded-xl shadow-lg border border-slate-100">
+                          <p className="text-[10px] font-black uppercase text-slate-400">{payload[0].payload.name}</p>
+                          <p className="text-sm font-black text-slate-900">৳{payload[0].value.toLocaleString()}</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+              </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -8245,28 +8497,35 @@ function UserHistory() {
           <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-8">{t('performanceOverview')}</h2>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 800 }}
-                />
-                <YAxis hide />
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={70}
+                  paddingAngle={5}
+                  dataKey="sales"
+                  animationDuration={1500}
+                >
+                  {chartData.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="transparent" />
+                  ))}
+                </Pie>
                 <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
-                  formatter={(val: number) => [`৳${val.toLocaleString()}`, t('totalSales')]}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-white p-3 rounded-xl shadow-lg border border-slate-100">
+                          <p className="text-[10px] font-black uppercase text-slate-400">{payload[0].payload.name}</p>
+                          <p className="text-sm font-black text-slate-900">৳{payload[0].value.toLocaleString()}</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
                 />
-                <Line 
-                  type="stepAfter" 
-                  dataKey="sales" 
-                  stroke="#3b82f6" 
-                  strokeWidth={4} 
-                  dot={{ r: 4, fill: '#3b82f6', strokeWidth: 0 }}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
-                />
-              </LineChart>
+              </PieChart>
             </ResponsiveContainer>
           </div>
         </motion.div>
