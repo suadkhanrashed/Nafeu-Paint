@@ -209,6 +209,12 @@ const translations: Record<Language, Record<string, string>> = {
     products: "Products",
     users: "Users",
     reports: "Reports",
+    productCalculation: "Product Calculation",
+    lastYear: "Last Year",
+    last6Months: "Last 6 Months",
+    lastMonth: "Last Month",
+    last15Days: "Last 15 Days",
+    lastWeek: "Last Week",
     logout: "Logout",
     welcome: "Welcome Back",
     performanceOverview: "Performance Overview",
@@ -484,7 +490,16 @@ const translations: Record<Language, Record<string, string>> = {
     inventoryCatalog: "Inventory & Catalog",
     managementControl: "Management & Control",
     analyticsPerformance: "Analytics & Performance",
-    accountSupport: "Account & Support",
+    productRankings: "Product Rankings",
+    demandChart: "Demand Chart",
+    productDemandAnalytics: "Product Demand Analytics",
+    areaBaseAnalytics: "Area Base Analytics",
+    clickToExploreShops: "Click to Explore Shops",
+    shopBaseDetails: "Shop Base Details",
+    backToAreas: "Back to Areas",
+    preparingDownload: "Preparing Download",
+    paymentRate: "Payment Rate",
+    preparingDownloadLong: "Preparing your download, please wait...",
     MANAGE_USERS: "Manage Users",
     MANAGE_ROLES: "Manage Roles",
     MANAGE_PERMISSIONS: "Manage Permissions",
@@ -527,6 +542,12 @@ const translations: Record<Language, Record<string, string>> = {
     products: "পণ্য",
     users: "ব্যবহারকারী",
     reports: "রিপোর্ট",
+    productCalculation: "প্রোডাক্ট ক্যালকুলেশন",
+    lastYear: "গত বছর",
+    last6Months: "গত ৬ মাস",
+    lastMonth: "গত মাস",
+    last15Days: "গত ১৫ দিন",
+    lastWeek: "গত সপ্তাহ",
     logout: "লগআউট",
     welcome: "স্বাগতম",
     performanceOverview: "পারফরম্যান্স ওভারভিউ",
@@ -1638,6 +1659,15 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [isLg, setIsLg] = useState(false);
+
+  useEffect(() => {
+    const checkLg = () => setIsLg(window.innerWidth >= 1024);
+    checkLg();
+    window.addEventListener('resize', checkLg);
+    return () => window.removeEventListener('resize', checkLg);
+  }, []);
+
   const [usage, setUsage] = useState<Record<string, number>>(() => {
     try {
       const saved = localStorage.getItem('nav_usage');
@@ -1663,6 +1693,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     { label: t('activityLog'), icon: ShieldCheck, path: '/activity', permission: 'VIEW_ACTIVITY_LOG' as Permission },
     { label: t('history'), icon: History, path: '/history', permission: 'VIEW_ORDERS' as Permission },
     { label: t('reports'), icon: BarChart3, path: '/reports', permission: 'VIEW_REPORTS' as Permission, sector: 'ACCESS_FINANCE_VIEW' as Permission },
+    { label: t('productCalculation'), icon: TrendingUp, path: '/product-calculation', permission: 'VIEW_REPORTS' as Permission },
     { label: t('contacts'), icon: Contact2, path: '/contacts' },
     { label: t('explorePaints'), icon: Library, path: '/catalog', permission: 'MANAGE_CATALOG' as Permission },
   ];
@@ -1731,11 +1762,11 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
 
       <motion.aside
         initial={{ x: -280 }}
-        animate={{ x: isOpen ? 0 : -280 }}
+        animate={{ x: (isOpen || isLg) ? 0 : -280 }}
         transition={{ type: 'spring', damping: 28, stiffness: 250 }}
         className={cn(
-          "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 lg:translate-x-0 transition-all",
-          !isOpen && "lg:block lg:translate-x-0"
+          "fixed top-0 left-0 bottom-0 w-[280px] bg-white z-50 flex flex-col border-r border-slate-100 transition-all lg:!translate-x-0 shadow-2xl lg:shadow-none",
+          isLg && "lg:translate-x-0"
         )}
       >
         <div className="p-8 pb-6 flex items-center gap-4 shrink-0 overflow-hidden text-right font-['Georgia']">
@@ -1998,6 +2029,7 @@ function Dashboard() {
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   
   const chartSectionRef = useRef<HTMLDivElement>(null);
 
@@ -2032,21 +2064,13 @@ function Dashboard() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const allOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Order[];
       setOrders(allOrders);
-      const monthlyOrders = allOrders.filter(o => new Date(o.createdAt) >= startOfMonth);
-      
-      const monthlySales = monthlyOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
-      const totalOrders = allOrders.length;
-      const totalDue = allOrders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
-      const totalCollection = allOrders.reduce((sum, o) => sum + (o.amountPaid || 0), 0);
-      
-      setStats({
-        monthlySales,
-        collection: totalCollection,
-        due: totalDue,
-        totalOrders
-      });
       setRecentOrders(allOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders_dashboard'));
+
+    const unsubscribeTrans = onSnapshot(collection(db, 'transactions'), (transSnap) => {
+      const allTrans = transSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Transaction[];
+      setTransactions(allTrans);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'trans_dashboard'));
 
     const unsubscribeShops = onSnapshot(collection(db, 'shops'), (snapshot) => {
       setShops(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any)));
@@ -2059,10 +2083,41 @@ function Dashboard() {
     
     return () => {
       unsubscribe();
+      unsubscribeTrans();
       unsubscribeShops();
       unsubscribeRequests();
     };
   }, [profile, hasPermission]);
+
+  useEffect(() => {
+    if (!profile) return;
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const monthlyOrders = orders.filter(o => new Date(o.createdAt) >= startOfMonth);
+    const monthlySales = monthlyOrders.reduce((sum, i) => sum + (i.grandTotal || 0), 0);
+    const totalOrdersNum = orders.filter(o => o.status === 'pending').length;
+    const totalDue = orders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
+    
+    // Collection includes order amountPaid AND payment transactions
+    // BUT we must avoid double counting.
+    // Standard: Transaction records are the source of truth for payments.
+    // However, some legacy orders might have amountPaid set without a transaction record.
+    // For now, let's sum all payment transactions and only add order.amountPaid if it doesn't have a linked transaction.
+    // Simplification: Sum all 'payment' and 'previous_payment' transactions.
+    
+    const totalCollection = transactions
+      .filter(t => t.type === 'payment' || t.type === 'previous_payment')
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+    
+    setStats({
+      monthlySales,
+      collection: totalCollection,
+      due: totalDue,
+      totalOrders: totalOrdersNum
+    });
+  }, [orders, transactions]);
 
   useEffect(() => {
     if (!activeStat) {
@@ -2073,54 +2128,74 @@ function Dashboard() {
 
     // Process data for charts
     const areaDataMap: Record<string, number> = {};
-    orders.forEach(order => {
-      const shop = shops.find(s => s.code === order.shopCode);
-      const area = shop?.area || 'Unknown';
-      let value = 0;
-      if (activeStat === 'monthlySales') {
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
-        if (new Date(order.createdAt) >= startOfMonth) {
-          value = order.grandTotal;
-        }
-      } else if (activeStat === 'collection') {
-        value = order.amountPaid || 0;
-      } else if (activeStat === 'due') {
-        value = order.dueAmount || 0;
-      }
-
-      if (value > 0) {
-        areaDataMap[area] = (areaDataMap[area] || 0) + value;
-      }
-    });
-
-    const formattedData = Object.entries(areaDataMap).map(([name, value]) => ({ name, value }));
-    setChartData(formattedData.sort((a, b) => b.value - a.value));
-  }, [activeStat, orders, shops]);
-
-  const getShopDetailsForArea = (area: string) => {
-    const shopDataMap: Record<string, number> = {};
-    orders.forEach(order => {
-      const shop = shops.find(s => s.code === order.shopCode);
-      if (shop?.area === area) {
+    
+    if (activeStat === 'monthlySales' || activeStat === 'due') {
+      orders.forEach(order => {
+        const shop = shops.find(s => s.code === order.shopCode);
+        const area = shop?.area || 'Unknown';
         let value = 0;
         if (activeStat === 'monthlySales') {
           const startOfMonth = new Date();
           startOfMonth.setDate(1);
           startOfMonth.setHours(0, 0, 0, 0);
-          if (new Date(order.createdAt) >= startOfMonth) value = order.grandTotal;
-        } else if (activeStat === 'collection') {
-          value = order.amountPaid || 0;
+          if (new Date(order.createdAt) >= startOfMonth) {
+            value = order.grandTotal;
+          }
         } else if (activeStat === 'due') {
           value = order.dueAmount || 0;
         }
-        
+
         if (value > 0) {
-          shopDataMap[shop.name] = (shopDataMap[shop.name] || 0) + value;
+          areaDataMap[area] = (areaDataMap[area] || 0) + value;
         }
-      }
-    });
+      });
+    } else if (activeStat === 'collection') {
+      transactions.forEach(trans => {
+        if (trans.type === 'payment' || trans.type === 'previous_payment') {
+          const shop = shops.find(s => s.code === trans.shopCode);
+          const area = shop?.area || 'Unknown';
+          areaDataMap[area] = (areaDataMap[area] || 0) + trans.amount;
+        }
+      });
+    }
+
+    const formattedData = Object.entries(areaDataMap).map(([name, value]) => ({ name, value }));
+    setChartData(formattedData.sort((a, b) => b.value - a.value));
+  }, [activeStat, orders, shops, transactions]);
+
+  const getShopDetailsForArea = (area: string) => {
+    const shopDataMap: Record<string, number> = {};
+    
+    if (activeStat === 'monthlySales' || activeStat === 'due') {
+      orders.forEach(order => {
+        const shop = shops.find(s => s.code === order.shopCode);
+        if (shop?.area === area) {
+          let value = 0;
+          if (activeStat === 'monthlySales') {
+            const startOfMonth = new Date();
+            startOfMonth.setDate(1);
+            startOfMonth.setHours(0, 0, 0, 0);
+            if (new Date(order.createdAt) >= startOfMonth) value = order.grandTotal;
+          } else if (activeStat === 'due') {
+            value = order.dueAmount || 0;
+          }
+          
+          if (value > 0) {
+            shopDataMap[shop.name] = (shopDataMap[shop.name] || 0) + value;
+          }
+        }
+      });
+    } else if (activeStat === 'collection') {
+      transactions.forEach(trans => {
+        if (trans.type === 'payment' || trans.type === 'previous_payment') {
+          const shop = shops.find(s => s.code === trans.shopCode);
+          if (shop?.area === area) {
+            shopDataMap[shop.name] = (shopDataMap[shop.name] || 0) + trans.amount;
+          }
+        }
+      });
+    }
+    
     return Object.entries(shopDataMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   };
 
@@ -2241,112 +2316,41 @@ function Dashboard() {
               <div className="h-[400px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   {activeStat === 'monthlySales' ? (
-                    !selectedArea ? (
-                      <BarChart 
-                        data={chartData}
+                    <PieChart>
+                      <Pie
+                        data={selectedArea ? getShopDetailsForArea(selectedArea) : chartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({ name }) => name}
+                        animationDuration={1500}
                         onClick={(data) => {
-                          if (data && data.activeLabel) {
-                            setSelectedArea(data.activeLabel);
+                          if (data && data.name && !selectedArea) {
+                            setSelectedArea(data.name);
                           }
                         }}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
                       >
-                        <defs>
-                          <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                            <stop offset="100%" stopColor="#1e3a8a" stopOpacity={0.6}/>
-                          </linearGradient>
-                          <linearGradient id="barGlow" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.4}/>
-                            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis 
-                          dataKey="name" 
-                          axisLine={false} 
-                          tickLine={false} 
-                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }}
-                          dy={15}
-                        />
-                        <YAxis 
-                          axisLine={false} 
-                          tickLine={false} 
-                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }}
-                          tickFormatter={(value) => `৳${value >= 1000 ? `${(value/1000).toFixed(1)}k` : value}`}
-                          dx={-10}
-                        />
-                        <Tooltip 
-                          cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              return (
-                                <div className="bg-white/90 backdrop-blur-xl p-6 rounded-[2.5rem] shadow-2xl border border-blue-50/50 min-w-[220px] animate-in fade-in zoom-in duration-300">
-                                  <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-                                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{payload[0].payload.name}</p>
-                                    </div>
-                                    <div className="px-2 py-0.5 bg-blue-50 rounded-full text-[8px] font-black text-blue-600 uppercase tracking-widest">Live</div>
-                                  </div>
-                                  <p className="text-3xl font-black tracking-tighter text-slate-900 mb-1">৳{payload[0].value.toLocaleString()}</p>
-                                  <p className="text-[10px] text-slate-400 font-bold mb-4 uppercase">Total revenue generated</p>
-                                  <div className="grid grid-cols-2 gap-2 pt-4 border-t border-slate-100">
-                                    <div>
-                                      <p className="text-[8px] text-slate-400 font-black uppercase tracking-widest mb-1">Status</p>
-                                      <p className="text-[10px] text-emerald-600 font-black uppercase">Growing</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[8px] text-slate-400 font-black uppercase tracking-widest mb-1">Trend</p>
-                                      <TrendingUp className="w-3 h-3 text-blue-600" />
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Bar 
-                          dataKey="value" 
-                          fill="url(#salesGradient)" 
-                          radius={[12, 12, 0, 0]}
-                          barSize={60}
-                          animationDuration={1500}
-                          className="cursor-pointer transition-all duration-300 hover:opacity-100"
-                        />
-                      </BarChart>
-                    ) : (
-                      <PieChart>
-                        <Pie
-                          data={getShopDetailsForArea(selectedArea)}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={100}
-                          paddingAngle={5}
-                          dataKey="value"
-                          animationDuration={1500}
-                        >
-                          {getShopDetailsForArea(selectedArea).map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="transparent" />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              return (
-                                <div className="bg-white p-4 rounded-3xl shadow-xl border border-slate-100 min-w-[180px]">
-                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{payload[0].payload.name}</p>
-                                  <p className="text-xl font-black text-slate-900">৳{payload[0].value.toLocaleString()}</p>
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                      </PieChart>
-                    )
+                        {(selectedArea ? getShopDetailsForArea(selectedArea) : chartData).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="transparent" />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-white p-4 rounded-3xl shadow-xl border border-slate-100 min-w-[180px]">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{payload[0].payload.name}</p>
+                                <p className="text-xl font-black text-slate-900">৳{payload[0].value.toLocaleString()}</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                    </PieChart>
                   ) : activeStat === 'collection' ? (
                     <BarChart 
                       layout="vertical"
@@ -2407,6 +2411,60 @@ function Dashboard() {
                         animationDuration={2000}
                       />
                     </BarChart>
+                  ) : activeStat === 'due' ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 h-full">
+                      <div className="h-full relative">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={selectedArea ? getShopDetailsForArea(selectedArea) : chartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={100}
+                              paddingAngle={5}
+                              dataKey="value"
+                              label={({ name }) => name}
+                              onClick={(data) => {
+                                if (data && data.name && !selectedArea) {
+                                  setSelectedArea(data.name);
+                                }
+                              }}
+                            >
+                              {(selectedArea ? getShopDetailsForArea(selectedArea) : chartData).map((entry, index) => (
+                                <Cell key={`cell-due-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} className="cursor-pointer" />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-0.5">{t('due')}</p>
+                            <p className="text-xl font-black text-red-600">৳{stats.due.toLocaleString()}</p>
+                         </div>
+                      </div>
+                      <div className="h-full overflow-y-auto px-2 scrollbar-hide">
+                        <div style={{ height: Math.max(400, (selectedArea ? getShopDetailsForArea(selectedArea) : chartData).length * 40) }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart 
+                              data={selectedArea ? getShopDetailsForArea(selectedArea) : chartData} 
+                              layout="vertical"
+                              onClick={(data) => {
+                                if (data && data.activeLabel && !selectedArea) {
+                                  setSelectedArea(data.activeLabel);
+                                }
+                              }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                              <XAxis type="number" hide />
+                              <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={100} tick={{ fontSize: 9, fontWeight: 700 }} />
+                              <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} className="cursor-pointer" />
+                              <Tooltip />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <div className="relative h-full flex items-center justify-center">
                       <PieChart>
@@ -2678,19 +2736,37 @@ function NewOrder() {
     
     const item = newItems[index];
     
-    // Rate update logic: product, grade, or size change resets the rate to official base rate or remembered custom rate
+    // Rate update logic: product, grade, or size change resets the rate to official base rate
     if (field === 'productName' || field === 'size' || field === 'grade') {
-      if (item.productName && item.grade) {
-        // Find matching product
-        const prod = products.find(p => p.name === item.productName && p.grade === item.grade);
+      if (field === 'productName' && value) {
+        const prod = products.find(p => p.name === value);
+        if (prod && prod.sizes && prod.sizes.length > 0) {
+          newItems[index].size = prod.sizes[0];
+          item.size = prod.sizes[0]; // Update local item reference for following logic
+        }
+      }
+      
+      if (item.productName && item.grade && item.size) {
+        // Find matching product - match name, grade AND size (if size is explicitly matched in list)
+        // Note: the current schema stores sizes as string array in one product.
+        // We find the product that matches name and grade and HAS the requested size.
+        const prod = products.find(p => 
+          p.name === item.productName && 
+          p.grade === item.grade && 
+          p.sizes.includes(item.size)
+        );
+        
         if (prod) {
-          const key = `rate_${item.productName}_${item.size}_${item.grade}`;
-          const rememberedRate = localStorage.getItem(key);
-          // If a custom rate was previously entered for this exact combination, use it; otherwise use baseRate
-          newItems[index].rate = rememberedRate ? parseFloat(rememberedRate) : (prod.baseRate || 0);
+          // Instantly change the rate in new order to follow product list rate
+          newItems[index].rate = prod.baseRate || 0;
         } else {
-          // If no matching product found (e.g. grade doesn't exist for this product), reset rate
-          newItems[index].rate = 0;
+          // Fallback search if size-matching fails (maybe some generic entry)
+          const genericProd = products.find(p => p.name === item.productName && p.grade === item.grade);
+          if (genericProd) {
+            newItems[index].rate = genericProd.baseRate || 0;
+          } else {
+            newItems[index].rate = 0;
+          }
         }
 
         // Check for duplicates
@@ -3293,7 +3369,7 @@ function ShopDetails() {
     if (!element) return;
     
     setExporting(true);
-    showToast(t('preparingDownload') || 'Preparing download...');
+    showToast(t('Preparing Download') || 'Preparing download...');
     
     try {
       // Small delay to let UI settle if needed
@@ -6487,31 +6563,35 @@ function Reports() {
           </div>
         </div>
 
-        {/* Shop Performance (Donut/Bar mix) */}
+        {/* Shop Performance (Pie/Sale Chart) */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
           <h2 className="text-lg font-bold text-slate-800 mb-8 flex items-center gap-2">
             <Store className="w-5 h-5 text-purple-500" />
-            {t('shopPerformance')}
+            {t('shopPerformance')} (Sale Chart)
           </h2>
-          <div className="h-80 w-full">
+          <div className="h-80 w-full relative">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={shopData} layout="vertical" margin={{ left: 20, right: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                <XAxis type="number" hide />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  width={120}
-                  tick={{ fontSize: 10, fill: '#1e293b', fontWeight: 700 }}
-                />
+              <PieChart>
+                <Pie
+                  data={shopData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={({ name }) => name}
+                  animationDuration={1500}
+                >
+                  {shopData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="transparent" />
+                  ))}
+                </Pie>
                 <Tooltip 
-                  cursor={{ fill: 'rgba(0,0,0,0.02)' }}
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       return (
-                        <div className="bg-white p-3 rounded-xl shadow-lg border border-slate-100">
+                        <div className="bg-white p-3 rounded-xl shadow-lg border border-slate-100 font-bold">
                           <p className="text-[10px] font-black uppercase text-slate-400">{payload[0].payload.name}</p>
                           <p className="text-sm font-black text-slate-900">৳{payload[0].value.toLocaleString()}</p>
                         </div>
@@ -6520,18 +6600,104 @@ function Reports() {
                     return null;
                   }}
                 />
-                <Bar 
-                  dataKey="value" 
-                  radius={[0, 8, 8, 0]}
-                  barSize={16}
-                  animationDuration={1500}
-                >
-                  {shopData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length] || CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
+              </PieChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Due Breakdown (Bar Chart) */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <h2 className="text-lg font-bold text-slate-800 mb-8 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+            {t('dueBreakdown')} (Due Chart)
+          </h2>
+          <div className="h-80 w-full overflow-y-auto scrollbar-hide">
+            <div style={{ height: Math.max(300, orders.length > 0 ? Array.from(new Set(orders.map(o => o.shopName))).length * 40 : 300) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart 
+                  layout="vertical"
+                  data={Array.from(new Set(orders.map(o => o.shopName))).map(shopName => ({
+                    name: shopName,
+                    value: orders.filter(o => o.shopName === shopName).reduce((sum, o) => sum + (o.dueAmount || 0), 0)
+                  })).filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 10)}
+                  margin={{ left: 60, right: 20, top: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={100} tick={{ fontSize: 9, fontWeight: 700 }} />
+                  <Bar dataKey="value" fill="#ef4444" radius={[0, 10, 10, 0]} barSize={20} />
+                  <Tooltip 
+                    cursor={{ fill: 'rgba(239, 68, 68, 0.05)' }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-xl font-bold">
+                            <p className="text-[10px] font-black uppercase text-slate-400">{payload[0].payload.name}</p>
+                            <p className="text-sm font-black">৳{payload[0].value.toLocaleString()}</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        {/* Due Chart (Pie then Bar) */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 lg:col-span-2">
+          <h2 className="text-lg font-bold text-slate-800 mb-8 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+            {t('due')} Chart
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 h-[400px]">
+             <div className="h-full">
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Due Distribution (Pie)</p>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={shopData.map(s => ({ ...s, value: orders.filter(o => o.shopName === s.name).reduce((sum, o) => sum + (o.dueAmount || 0), 0) })).sort((a,b) => b.value - a.value).slice(0, 8)}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {shopData.map((_, index) => (
+                        <Cell key={`cell-due-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                       content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-white p-3 rounded-xl shadow-lg border border-slate-100">
+                              <p className="text-[10px] font-black uppercase text-slate-400">{payload[0].payload.name}</p>
+                              <p className="text-sm font-black text-red-600">৳{payload[0].value.toLocaleString()}</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+             </div>
+             <div className="h-full">
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Top Debts (Bar)</p>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={shopData.map(s => ({ name: s.name, value: orders.filter(o => o.shopName === s.name).reduce((sum, o) => sum + (o.dueAmount || 0), 0) })).sort((a,b) => b.value - a.value).slice(0, 5)} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={100} tick={{ fontSize: 9, fontWeight: 700 }} />
+                    <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                    <Tooltip />
+                  </BarChart>
+                </ResponsiveContainer>
+             </div>
           </div>
         </div>
 
@@ -8575,6 +8741,158 @@ function UserHistory() {
 
 // --- App Navigation ---
 
+function ProductCalculation() {
+  const { t } = useLanguage();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activePeriod, setActivePeriod] = useState(30);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'orders'), (snapshot) => {
+      setOrders(snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Order[]);
+      setLoading(false);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders_product_calc'));
+    return () => unsubscribe();
+  }, []);
+
+  const getDemandForPeriod = (days: number) => {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    
+    const periodOrders = orders.filter(o => new Date(o.createdAt) >= startDate);
+    const productStats: Record<string, { quantity: number; amount: number }> = {};
+
+    periodOrders.forEach(order => {
+      order.items.forEach(item => {
+        const key = `${item.productName} (${item.size}, G${item.grade})`;
+        if (!productStats[key]) productStats[key] = { quantity: 0, amount: 0 };
+        productStats[key].quantity += item.quantity;
+        productStats[key].amount += item.total;
+      });
+    });
+
+    return Object.entries(productStats)
+      .map(([name, stats]) => ({ name, ...stats }))
+      .sort((a, b) => b.quantity - a.quantity);
+  };
+
+  if (loading) return <LoadingScreen />;
+
+  const periods = [
+    { label: t('lastYear'), days: 365 },
+    { label: t('last6Months'), days: 180 },
+    { label: t('lastMonth'), days: 30 },
+    { label: t('last15Days'), days: 15 },
+    { label: t('lastWeek'), days: 7 }
+  ];
+
+  const currentData = getDemandForPeriod(activePeriod);
+
+  return (
+    <div className="space-y-8 pb-12">
+      <header className="space-y-6">
+        <div>
+          <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter">{t('productCalculation')}</h1>
+          <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-2 px-1">Detailed analysis of your sales performance</p>
+        </div>
+
+        {/* Period Selection Bar (2nd Row) */}
+        <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-[2rem] w-fit">
+          {periods.map((period) => (
+            <button
+              key={period.days}
+              onClick={() => setActivePeriod(period.days)}
+              className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                activePeriod === period.days
+                  ? 'bg-slate-900 text-white shadow-xl scale-105'
+                  : 'text-slate-500 hover:bg-white hover:text-slate-900'
+              }`}
+            >
+              {period.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden group">
+        <div className="p-8 bg-slate-900 text-white flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-black uppercase tracking-widest flex items-center gap-3">
+              <TrendingUp className="w-5 h-5 text-blue-400" />
+              {periods.find(p => p.days === activePeriod)?.label}
+            </h2>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1 ml-8">Product Performance Data</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Distinct Products</p>
+            <p className="text-2xl font-black">{currentData.length}</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/50">
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400">{t('product')}</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">{t('quantity')}</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">{t('total')}</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Trend</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {currentData.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="p-20 text-center">
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center">
+                        <ShoppingBag className="w-8 h-8 text-slate-200" />
+                      </div>
+                      <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">{t('noOrders')} in this period</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                currentData.map((prod, idx) => (
+                  <tr key={prod.name} className="hover:bg-slate-50/50 transition-colors group/row">
+                    <td className="p-6">
+                      <p className="font-black text-slate-900 group-hover/row:text-blue-600 transition-colors uppercase text-sm tracking-tight">{prod.name}</p>
+                    </td>
+                    <td className="p-6 text-center">
+                      <span className="px-4 py-1.5 bg-slate-100 rounded-full text-xs font-black text-slate-600 transition-all group-hover/row:bg-blue-50 group-hover/row:text-blue-600">
+                        {prod.quantity}
+                      </span>
+                    </td>
+                    <td className="p-6 text-right">
+                      <p className="font-black text-slate-900 italic text-lg">৳{prod.amount.toLocaleString()}</p>
+                    </td>
+                    <td className="p-6 text-right">
+                       <div className="flex items-center justify-end gap-2">
+                          {idx < 3 ? (
+                            <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-black uppercase rounded-full shadow-sm border border-emerald-100">
+                              <span className="w-1 h-1 bg-emerald-600 rounded-full animate-ping" />
+                              High Demand
+                            </div>
+                          ) : idx > currentData.length - 3 ? (
+                            <div className="px-3 py-1 bg-red-50 text-red-600 text-[9px] font-black uppercase rounded-full border border-red-100">
+                              Low Volume
+                            </div>
+                          ) : (
+                            <div className="px-3 py-1 bg-slate-50 text-slate-400 text-[9px] font-black uppercase rounded-full border border-slate-100">
+                              Stable
+                            </div>
+                          )}
+                       </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
   const { user, profile, loading, hasPermission, connectionError } = useAuth();
   const { t } = useLanguage();
@@ -8655,6 +8973,10 @@ function AppRoutes() {
 
               {hasPermission('VIEW_REPORTS') && (
                 <Route path="/reports" element={<Reports />} />
+              )}
+
+              {hasPermission('VIEW_REPORTS') && (
+                <Route path="/product-calculation" element={<ProductCalculation />} />
               )}
 
               {hasPermission('MANAGE_USERS') && (
