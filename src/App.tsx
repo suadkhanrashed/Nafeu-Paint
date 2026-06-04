@@ -123,7 +123,14 @@ import {
   Warehouse,
   Leaf,
   Eye,
-  EyeOff
+  EyeOff,
+  GitBranch,
+  Network,
+  UserPlus,
+  Workflow,
+  KeyRound,
+  ShieldQuestion,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { format } from 'date-fns';
@@ -210,6 +217,10 @@ const translations: Record<Language, Record<string, string>> = {
     users: "Users",
     reports: "Reports",
     productCalculation: "Product Calculation",
+    orgPanel: "Organization & HR",
+    branching: "Branching Setup",
+    orgTree: "Organization Tree",
+    hrSection: "HR Section",
     lastYear: "Last Year",
     last6Months: "Last 6 Months",
     lastMonth: "Last Month",
@@ -218,6 +229,7 @@ const translations: Record<Language, Record<string, string>> = {
     logout: "Logout",
     welcome: "Welcome Back",
     performanceOverview: "Performance Overview",
+    selectedTimePeriod: "Select Time Period",
     monthlySales: "Monthly Sales",
     collection: "Collection",
     due: "Due",
@@ -543,6 +555,10 @@ const translations: Record<Language, Record<string, string>> = {
     users: "ব্যবহারকারী",
     reports: "রিপোর্ট",
     productCalculation: "প্রোডাক্ট ক্যালকুলেশন",
+    orgPanel: "প্রতিষ্ঠান ও এইচআর",
+    branching: "শাখা বা ব্রাঞ্চিং",
+    orgTree: "প্রাতিষ্ঠানিক চার্ট",
+    hrSection: "এইচআর সেকশন",
     lastYear: "গত বছর",
     last6Months: "গত ৬ মাস",
     lastMonth: "গত মাস",
@@ -551,6 +567,7 @@ const translations: Record<Language, Record<string, string>> = {
     logout: "লগআউট",
     welcome: "স্বাগতম",
     performanceOverview: "পারফরম্যান্স ওভারভিউ",
+    selectedTimePeriod: "সময়কাল নির্বাচন করুন",
     monthlySales: "মাসিক বিক্রয়",
     collection: "সংগ্রহ",
     due: "বাকি",
@@ -1660,6 +1677,11 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const location = useLocation();
 
   const [isLg, setIsLg] = useState(false);
+  const [featureFlags, setFeatureFlags] = useState<any>({
+    branchingEnabledForOthers: false,
+    treeEnabledForOthers: false,
+    hrEnabledForOthers: false
+  });
 
   useEffect(() => {
     const checkLg = () => setIsLg(window.innerWidth >= 1024);
@@ -1668,20 +1690,16 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     return () => window.removeEventListener('resize', checkLg);
   }, []);
 
-  const [usage, setUsage] = useState<Record<string, number>>(() => {
-    try {
-      const saved = localStorage.getItem('nav_usage');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'admin_features'), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        setFeatureFlags(docSnapshot.data());
+      }
+    }, (error) => console.log('Feature flags loading error:', error));
+    return () => unsub();
+  }, []);
 
-  const trackUsage = (path: string) => {
-    const newUsage = { ...usage, [path]: (usage[path] || 0) + 1 };
-    setUsage(newUsage);
-    localStorage.setItem('nav_usage', JSON.stringify(newUsage));
-  };
+  const [orderedPaths, setOrderedPaths] = useState<string[]>([]);
 
   const rawNavItems = [
     { label: t('dashboard'), icon: LayoutDashboard, path: '/', permission: 'VIEW_DASHBOARD' as Permission },
@@ -1698,6 +1716,20 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     { label: t('explorePaints'), icon: Library, path: '/catalog', permission: 'MANAGE_CATALOG' as Permission },
   ];
 
+  const adminOrOwner = profile?.role === 'admin' || profile?.role === 'owner';
+  const showOrgPanel = adminOrOwner || 
+    featureFlags.branchingEnabledForOthers || 
+    featureFlags.treeEnabledForOthers || 
+    featureFlags.hrEnabledForOthers;
+
+  if (showOrgPanel) {
+    rawNavItems.push({
+      label: t('orgPanel') || 'Organization & HR',
+      icon: GitBranch,
+      path: '/org-panel'
+    });
+  }
+
   let baseNavItems = [...rawNavItems];
 
   if (profile?.role === 'shop_owner') {
@@ -1709,18 +1741,52 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     baseNavItems = baseNavItems.filter(item => item.label !== t('dashboard'));
   }
 
-  // Most used after Dashboard logic
-  const dashboardItem = baseNavItems.find(i => i.path === '/' || i.path === '/shop-dashboard' || i.path.includes('/shops/'));
-  const others = baseNavItems.filter(i => i !== dashboardItem);
-  const sortedOthers = [...others].sort((a, b) => (usage[b.path] || 0) - (usage[a.path] || 0));
-  const navItems = dashboardItem ? [dashboardItem, ...sortedOthers] : sortedOthers;
-
-  const visibleItems = navItems.filter(item => {
+  const visibleItems = baseNavItems.filter(item => {
     if (item.path === '/profile' || item.path === '/contacts') return !!profile;
     const hasBasePermission = item.permission ? hasPermission(item.permission as Permission) : true;
     const hasSectorPermission = item.sector ? hasPermission(item.sector as Permission) : true;
     return hasBasePermission && hasSectorPermission;
   });
+
+  useEffect(() => {
+    if (visibleItems.length === 0) return;
+    try {
+      const saved = localStorage.getItem('nav_custom_order');
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[];
+        const validParsed = parsed.filter(p => visibleItems.some(item => item.path === p));
+        const missing = visibleItems.filter(item => !validParsed.includes(item.path)).map(item => item.path);
+        const nextPaths = [...validParsed, ...missing];
+        setOrderedPaths(prev => {
+          if (JSON.stringify(prev) !== JSON.stringify(nextPaths)) {
+            return nextPaths;
+          }
+          return prev;
+        });
+      } else {
+        const defaultPaths = visibleItems.map(i => i.path);
+        setOrderedPaths(prev => {
+          if (JSON.stringify(prev) !== JSON.stringify(defaultPaths)) {
+            return defaultPaths;
+          }
+          return prev;
+        });
+      }
+    } catch {
+      const defaultPaths = visibleItems.map(i => i.path);
+      setOrderedPaths(prev => {
+        if (JSON.stringify(prev) !== JSON.stringify(defaultPaths)) {
+          return defaultPaths;
+        }
+        return prev;
+      });
+    }
+  }, [profile, visibleItems.length]);
+
+  const handleReorder = (newPaths: string[]) => {
+    setOrderedPaths(newPaths);
+    localStorage.setItem('nav_custom_order', JSON.stringify(newPaths));
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -1810,47 +1876,54 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 space-y-8 scrollbar-hide pb-8">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
+          <Reorder.Group
+            axis="y"
+            values={orderedPaths}
+            onReorder={handleReorder}
             className="space-y-1"
           >
-            {visibleItems.map((item) => {
+            {orderedPaths.map((path) => {
+              const item = visibleItems.find(i => i.path === path);
+              if (!item) return null;
               const isActive = location.pathname === item.path;
               return (
-                <motion.button
+                <Reorder.Item
                   key={item.path}
-                  variants={itemVariants}
-                  whileHover={{ x: 6 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => {
-                    trackUsage(item.path);
-                    navigate(item.path);
-                    setIsOpen(false);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-[11px] font-black tracking-wider uppercase transition-all relative group",
-                    isActive 
-                      ? "bg-slate-900 text-white shadow-xl shadow-slate-200" 
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                  )}
+                  value={item.path}
+                  className="list-none select-none touch-none"
                 >
-                  <item.icon className={cn(
-                    "w-5 h-5 group-hover:scale-110 transition-transform",
-                    isActive ? "text-blue-400" : ""
-                  )} />
-                  <span>{item.label}</span>
-                  {isActive && (
-                    <motion.div 
-                      layoutId="nav-dot"
-                      className="ml-auto w-1.5 h-1.5 bg-blue-400 rounded-full" 
-                    />
-                  )}
-                </motion.button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate(item.path);
+                      setIsOpen(false);
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-[11px] font-black tracking-wider uppercase transition-all relative group cursor-grab active:cursor-grabbing text-left",
+                      isActive 
+                        ? "bg-slate-900 text-white shadow-xl shadow-slate-200" 
+                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                    )}
+                  >
+                    <item.icon className={cn(
+                      "w-5 h-5 group-hover:scale-110 transition-transform shrink-0",
+                      isActive ? "text-blue-400" : ""
+                    )} />
+                    <span className="flex-1 truncate">{item.label}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="opacity-0 group-hover:opacity-40 text-[9px] font-bold text-slate-400 select-none">DRAG</span>
+                      {isActive && (
+                        <motion.div 
+                          layoutId="nav-dot"
+                          className="w-1.5 h-1.5 bg-blue-400 rounded-full" 
+                        />
+                      )}
+                    </div>
+                  </button>
+                </Reorder.Item>
               );
             })}
-          </motion.div>
+          </Reorder.Group>
         </div>
 
         <div className="p-6 border-t border-slate-100 bg-slate-50/50">
@@ -2022,6 +2095,50 @@ function Dashboard() {
     totalOrders: 0
   });
   const [activeStat, setActiveStat] = useState<'monthlySales' | 'collection' | 'due' | null>(null);
+
+  const formatLocalDate = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const [startDate, setStartDate] = useState<string>(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return formatLocalDate(start);
+  });
+  const [endDate, setEndDate] = useState<string>(() => formatLocalDate(new Date()));
+  const [activePreset, setActivePreset] = useState<'week' | 'month' | 'last_month' | 'year' | 'all' | 'custom'>('month');
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+
+  const setPresetRange = (preset: 'week' | 'month' | 'last_month' | 'year' | 'all') => {
+    setActivePreset(preset);
+    const now = new Date();
+    if (preset === 'week') {
+      const start = new Date();
+      start.setDate(now.getDate() - 7);
+      setStartDate(formatLocalDate(start));
+      setEndDate(formatLocalDate(now));
+    } else if (preset === 'month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(formatLocalDate(start));
+      setEndDate(formatLocalDate(now));
+    } else if (preset === 'last_month') {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      setStartDate(formatLocalDate(start));
+      setEndDate(formatLocalDate(end));
+    } else if (preset === 'year') {
+      const start = new Date(now.getFullYear(), 0, 1);
+      setStartDate(formatLocalDate(start));
+      setEndDate(formatLocalDate(now));
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
+
   const [showDetails, setShowDetails] = useState(false);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [orderRequests, setOrderRequests] = useState<any[]>([]);
@@ -2091,33 +2208,42 @@ function Dashboard() {
 
   useEffect(() => {
     if (!profile) return;
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
 
-    const monthlyOrders = orders.filter(o => new Date(o.createdAt) >= startOfMonth);
-    const monthlySales = monthlyOrders.reduce((sum, i) => sum + (i.grandTotal || 0), 0);
-    const totalOrdersNum = orders.filter(o => o.status === 'pending').length;
-    const totalDue = orders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
+    const isWithinSelectedPeriod = (dateStr: string) => {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      
+      const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        const startMidnight = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+        if (dMidnight < startMidnight) return false;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        const endMidnight = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+        if (dMidnight > endMidnight) return false;
+      }
+      return true;
+    };
+
+    const periodOrders = orders.filter(o => isWithinSelectedPeriod(o.createdAt));
+    const periodSales = periodOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
+    const periodOrdersCount = periodOrders.length;
+    const periodDue = periodOrders.reduce((sum, o) => sum + (o.dueAmount || 0), 0);
     
-    // Collection includes order amountPaid AND payment transactions
-    // BUT we must avoid double counting.
-    // Standard: Transaction records are the source of truth for payments.
-    // However, some legacy orders might have amountPaid set without a transaction record.
-    // For now, let's sum all payment transactions and only add order.amountPaid if it doesn't have a linked transaction.
-    // Simplification: Sum all 'payment' and 'previous_payment' transactions.
-    
-    const totalCollection = transactions
-      .filter(t => t.type === 'payment' || t.type === 'previous_payment')
+    const periodCollection = transactions
+      .filter(t => (t.type === 'payment' || t.type === 'previous_payment') && isWithinSelectedPeriod(t.date || t.createdAt || ''))
       .reduce((sum, t) => sum + (t.amount || 0), 0);
     
     setStats({
-      monthlySales,
-      collection: totalCollection,
-      due: totalDue,
-      totalOrders: totalOrdersNum
+      monthlySales: periodSales,
+      collection: periodCollection,
+      due: periodDue,
+      totalOrders: periodOrdersCount
     });
-  }, [orders, transactions]);
+  }, [orders, transactions, startDate, endDate, profile]);
 
   useEffect(() => {
     if (!activeStat) {
@@ -2126,21 +2252,36 @@ function Dashboard() {
       return;
     }
 
+    const isWithinSelectedPeriod = (dateStr: string) => {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      
+      const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        const startMidnight = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+        if (dMidnight < startMidnight) return false;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        const endMidnight = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+        if (dMidnight > endMidnight) return false;
+      }
+      return true;
+    };
+
     // Process data for charts
     const areaDataMap: Record<string, number> = {};
     
     if (activeStat === 'monthlySales' || activeStat === 'due') {
       orders.forEach(order => {
+        if (!isWithinSelectedPeriod(order.createdAt)) return;
         const shop = shops.find(s => s.code === order.shopCode);
         const area = shop?.area || 'Unknown';
         let value = 0;
         if (activeStat === 'monthlySales') {
-          const startOfMonth = new Date();
-          startOfMonth.setDate(1);
-          startOfMonth.setHours(0, 0, 0, 0);
-          if (new Date(order.createdAt) >= startOfMonth) {
-            value = order.grandTotal;
-          }
+          value = order.grandTotal;
         } else if (activeStat === 'due') {
           value = order.dueAmount || 0;
         }
@@ -2151,6 +2292,7 @@ function Dashboard() {
       });
     } else if (activeStat === 'collection') {
       transactions.forEach(trans => {
+        if (!isWithinSelectedPeriod(trans.date || trans.createdAt || '')) return;
         if (trans.type === 'payment' || trans.type === 'previous_payment') {
           const shop = shops.find(s => s.code === trans.shopCode);
           const area = shop?.area || 'Unknown';
@@ -2161,21 +2303,38 @@ function Dashboard() {
 
     const formattedData = Object.entries(areaDataMap).map(([name, value]) => ({ name, value }));
     setChartData(formattedData.sort((a, b) => b.value - a.value));
-  }, [activeStat, orders, shops, transactions]);
+  }, [activeStat, orders, shops, transactions, startDate, endDate]);
 
   const getShopDetailsForArea = (area: string) => {
     const shopDataMap: Record<string, number> = {};
     
+    const isWithinSelectedPeriod = (dateStr: string) => {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      
+      const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        const startMidnight = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+        if (dMidnight < startMidnight) return false;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        const endMidnight = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+        if (dMidnight > endMidnight) return false;
+      }
+      return true;
+    };
+
     if (activeStat === 'monthlySales' || activeStat === 'due') {
       orders.forEach(order => {
+        if (!isWithinSelectedPeriod(order.createdAt)) return;
         const shop = shops.find(s => s.code === order.shopCode);
         if (shop?.area === area) {
           let value = 0;
           if (activeStat === 'monthlySales') {
-            const startOfMonth = new Date();
-            startOfMonth.setDate(1);
-            startOfMonth.setHours(0, 0, 0, 0);
-            if (new Date(order.createdAt) >= startOfMonth) value = order.grandTotal;
+            value = order.grandTotal;
           } else if (activeStat === 'due') {
             value = order.dueAmount || 0;
           }
@@ -2187,6 +2346,7 @@ function Dashboard() {
       });
     } else if (activeStat === 'collection') {
       transactions.forEach(trans => {
+        if (!isWithinSelectedPeriod(trans.date || trans.createdAt || '')) return;
         if (trans.type === 'payment' || trans.type === 'previous_payment') {
           const shop = shops.find(s => s.code === trans.shopCode);
           if (shop?.area === area) {
@@ -2197,6 +2357,43 @@ function Dashboard() {
     }
     
     return Object.entries(shopDataMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  };
+
+  const getStatLabel = (id: string) => {
+    const isBengali = t('monthlySales') === "মাসিক বিক্রয়";
+    if (id === 'monthlySales') {
+      if (activePreset === 'week') return isBengali ? "সাপ্তাহিক বিক্রয়" : "Weekly Sales";
+      if (activePreset === 'month') return isBengali ? "মাসিক বিক্রয়" : "This Month Sales";
+      if (activePreset === 'last_month') return isBengali ? "গত মাসের বিক্রয়" : "Last Month Sales";
+      if (activePreset === 'year') return isBengali ? "বার্ষিক বিক্রয়" : "Yearly Sales";
+      if (activePreset === 'all') return isBengali ? "সর্বমোট বিক্রয়" : "Lifetime Sales";
+      return isBengali ? "বাছাইকৃত সময়ের বিক্রয়" : "Sales in Selected Period";
+    }
+    if (id === 'collection') {
+      if (activePreset === 'week') return isBengali ? "সাপ্তাহিক রিসিভ" : "Weekly Collection";
+      if (activePreset === 'month') return isBengali ? "মাসিক রিসিভ" : "This Month Collection";
+      if (activePreset === 'last_month') return isBengali ? "গত মাসের রিসিভ" : "Last Month Collection";
+      if (activePreset === 'year') return isBengali ? "বার্ষিক রিসিভ" : "Yearly Collection";
+      if (activePreset === 'all') return isBengali ? "সর্বমোট রিসিভ" : "Lifetime Collection";
+      return isBengali ? "বাছাইকৃত সময়ের রিসিভ" : "Collection in Selected Period";
+    }
+    if (id === 'due') {
+      if (activePreset === 'week') return isBengali ? "সাপ্তাহিক বকেয়া" : "Weekly Due";
+      if (activePreset === 'month') return isBengali ? "মাসিক বকেয়া" : "This Month Due";
+      if (activePreset === 'last_month') return isBengali ? "গত মাসের বকেয়া" : "Last Month Due";
+      if (activePreset === 'year') return isBengali ? "বার্ষিক বকেয়া" : "Yearly Due";
+      if (activePreset === 'all') return isBengali ? "সর্বমোট বকেয়া" : "Lifetime Due";
+      return isBengali ? "বাছাইকৃত সময়ের বকেয়া" : "Due in Selected Period";
+    }
+    if (id === 'totalOrders') {
+      if (activePreset === 'week') return isBengali ? "সাপ্তাহিক অর্ডার" : "Weekly Orders";
+      if (activePreset === 'month') return isBengali ? "মাসিক অর্ডার" : "This Month Orders";
+      if (activePreset === 'last_month') return isBengali ? "গত মাসের অর্ডার" : "Last Month Orders";
+      if (activePreset === 'year') return isBengali ? "বার্ষিক অর্ডার" : "Yearly Orders";
+      if (activePreset === 'all') return isBengali ? "সর্বমোট অর্ডার" : "Lifetime Orders";
+      return isBengali ? "বাছাইকৃত সময়ের অর্ডার" : "Orders in Selected Period";
+    }
+    return '';
   };
 
   if (profile?.role === 'shop_owner' && profile.permissionStatus !== 'granted') {
@@ -2211,25 +2408,136 @@ function Dashboard() {
           <p className="text-slate-500 font-medium">{t('performanceOverview')}</p>
         </div>
         {hasPermission('VIEW_REPORTS') && hasPermission('ACCESS_FINANCE_VIEW') && (
-          <button
-            onClick={() => setShowDetails(!showDetails)}
-            className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 rounded-2xl text-slate-700 font-black text-sm uppercase tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95"
-          >
-            {showDetails ? <X className="w-4 h-4" /> : <BarChart3 className="w-4 h-4" />}
-            {showDetails ? t('hideDetails') : t('viewDetails')}
-          </button>
+          <div className="flex flex-wrap items-center gap-2 relative">
+            <button
+              onClick={() => setShowDetails(!showDetails)}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-2xl text-slate-700 font-black text-xs uppercase tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 h-[38px] shrink-0"
+            >
+              {showDetails ? <X className="w-3.5 h-3.5" /> : <BarChart3 className="w-3.5 h-3.5" />}
+              {showDetails ? t('hideDetails') : t('viewDetails')}
+            </button>
+
+            {/* Time period drop down bar in short form */}
+            <div className="flex items-center bg-white border border-slate-200 rounded-2xl shadow-sm pl-1 pr-1 h-[38px] shrink-0 relative">
+              <select
+                value={activePreset}
+                onChange={(e) => {
+                  const val = e.target.value as any;
+                  if (val !== 'custom') {
+                    setPresetRange(val);
+                  }
+                }}
+                className="bg-transparent text-slate-700 font-black text-xs uppercase tracking-wider pl-3 pr-8 py-1.5 focus:outline-none cursor-pointer appearance-none"
+              >
+                <option value="week">{t('monthlySales') === "মাসিক বিক্রয়" ? "সপ্তাহ" : "Week"}</option>
+                <option value="month">{t('monthlySales') === "মাসিক বিক্রয়" ? "মাস" : "Month"}</option>
+                <option value="last_month">{t('monthlySales') === "মাসিক বিক্রয়" ? "গত মাস" : "Last Month"}</option>
+                <option value="year">{t('monthlySales') === "মাসিক বিক্রয়" ? "বছর" : "Year"}</option>
+                <option value="all">{t('monthlySales') === "মাসিক বিক্রয়" ? "সর্বমোট" : "Lifetime"}</option>
+                {activePreset === 'custom' && (
+                  <option value="custom">{t('monthlySales') === "মাসিক বিক্রয়" ? "কাস্টম" : "Custom"}</option>
+                )}
+              </select>
+              {/* Chevron icon inside the select styled nicely */}
+              <div className="absolute right-9 pointer-events-none text-slate-400">
+                <ChevronDown className="w-3.5 h-3.5" />
+              </div>
+
+              {/* Clock sign button to select custom time range */}
+              <button
+                onClick={() => setShowCustomDatePicker(!showCustomDatePicker)}
+                className={cn(
+                  "p-1.5 rounded-xl transition-all flex items-center justify-center",
+                  activePreset === 'custom'
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                )}
+                title={t('monthlySales') === "মাসিক বিক্রয়" ? "কাস্টম সীমা নির্বাচন" : "Custom Range"}
+              >
+                <Clock className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Custom Date Picker Popover */}
+            <AnimatePresence>
+              {showCustomDatePicker && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowCustomDatePicker(false)} 
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 bg-white p-4 rounded-3xl border border-slate-200 shadow-xl z-50 w-72 space-y-3"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        {t('monthlySales') === "মাসিক বিক্রয়" ? "কাস্টম সময়সীমা" : "Custom Date Range"}
+                      </span>
+                      <button 
+                        onClick={() => setShowCustomDatePicker(false)}
+                        className="text-slate-400 hover:text-slate-600 p-0.5"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">
+                        {t('monthlySales') === "মাসিক বিক্রয়" ? "শুরুর তারিখ" : "Start Date"}
+                      </label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => {
+                          setStartDate(e.target.value);
+                          setActivePreset('custom');
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-inner [color-scheme:light]"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">
+                        {t('monthlySales') === "মাসিক বিক্রয়" ? "শেষের তারিখ" : "End Date"}
+                      </label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => {
+                          setEndDate(e.target.value);
+                          setActivePreset('custom');
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-inner [color-scheme:light]"
+                      />
+                    </div>
+
+                    {startDate && endDate && (
+                      <div className="text-[9px] font-black text-blue-600 bg-blue-50/60 p-2 rounded-xl text-center select-none">
+                        {startDate} ➔ {endDate}
+                      </div>
+                    )}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
         )}
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {[
-          { id: 'monthlySales', label: t('monthlySales'), value: `৳${stats.monthlySales.toLocaleString()}`, icon: DollarSign, color: 'blue', sector: 'ACCESS_FINANCE_VIEW' },
-          { id: 'collection', label: t('collection'), value: `৳${stats.collection.toLocaleString()}`, icon: Wallet, color: 'emerald', sector: 'ACCESS_FINANCE_VIEW' },
-          { id: 'due', label: t('due'), value: `৳${stats.due.toLocaleString()}`, icon: AlertCircle, color: 'amber', sector: 'ACCESS_FINANCE_VIEW' },
-          { id: 'totalOrders', label: t('totalOrders'), value: stats.totalOrders.toString(), icon: Package, color: 'indigo', isTotalOrders: true },
+          { id: 'monthlySales', label: getStatLabel('monthlySales'), value: `৳${stats.monthlySales.toLocaleString()}`, icon: DollarSign, color: 'blue', sector: 'ACCESS_FINANCE_VIEW' },
+          { id: 'collection', label: getStatLabel('collection'), value: `৳${stats.collection.toLocaleString()}`, icon: Wallet, color: 'emerald', sector: 'ACCESS_FINANCE_VIEW' },
+          { id: 'due', label: getStatLabel('due'), value: `৳${stats.due.toLocaleString()}`, icon: AlertCircle, color: 'amber', sector: 'ACCESS_FINANCE_VIEW' },
+          { id: 'totalOrders', label: getStatLabel('totalOrders'), value: stats.totalOrders.toString(), icon: Package, color: 'indigo', isTotalOrders: true },
         ].filter(s => s.sector ? hasPermission(s.sector as Permission) : true).map((stat) => (
           <motion.div 
-            key={stat.label} 
+            key={stat.id} 
+
             whileHover={{ y: -5 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => {
@@ -3085,31 +3393,31 @@ function NewOrder() {
         </div>
 
         {showSummary && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-start justify-center p-4 overflow-y-auto pt-20 pb-20">
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-start justify-center p-2 sm:p-4 overflow-y-auto py-10 sm:py-20 animate-fade-in">
             <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white w-full max-w-2xl rounded-2xl sm:rounded-[2rem] shadow-2xl overflow-hidden flex flex-col my-auto"
             >
-              <div className="p-8 sm:p-12 space-y-12">
-                <div ref={summaryRef} className="space-y-8 bg-white">
-                  <div className="flex justify-between items-start">
-                  <div className="space-y-4">
-                    <div className="bg-blue-600 text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] inline-block">
-                      {editOrderId ? t('editOrder') : t('orderSummary')}
+              <div className="p-4 sm:p-10 space-y-8 sm:space-y-12">
+                <div ref={summaryRef} className="space-y-8 bg-white max-w-full overflow-hidden">
+                  <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-4 pb-6 border-b border-slate-100">
+                    <div className="space-y-2 sm:space-y-4 max-w-full">
+                      <div className="bg-blue-600 text-white px-3 sm:px-4 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] inline-block">
+                        {editOrderId ? t('editOrder') : t('orderSummary')}
+                      </div>
+                      <div className="max-w-full">
+                        <h2 className="text-2xl sm:text-4xl font-black text-slate-900 uppercase tracking-tight leading-tight break-words max-w-full pr-2">
+                          {shops.find(s => s.code === selectedShop)?.name || selectedShop}
+                        </h2>
+                        <p className="text-slate-450 font-bold text-[10px] sm:text-xs uppercase tracking-widest mt-1 sm:mt-2">{format(new Date(), 'EEEE, MMMM do • h:mm a')}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tight leading-none">
-                        {shops.find(s => s.code === selectedShop)?.name || selectedShop}
-                      </h2>
-                      <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-2">{format(new Date(), 'EEEE, MMMM do • h:mm a')}</p>
+                    <div className="text-left sm:text-right shrink-0 mt-2 sm:mt-0">
+                      <p className="text-[10px] font-black text-slate-350 uppercase tracking-widest mb-0.5 sm:mb-1">{t('grandTotal')}</p>
+                      <p className="text-3xl sm:text-4xl font-mono font-black text-blue-600 leading-none">৳{grandTotal.toLocaleString()}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">{t('grandTotal')}</p>
-                    <p className="text-4xl font-mono font-black text-blue-600">৳{grandTotal.toLocaleString()}</p>
-                  </div>
-                </div>
 
                 <div className="space-y-12">
                   {Object.entries(groupedItems).map(([size, sizeData]: [string, any]) => (
@@ -7293,21 +7601,56 @@ function ProductManagement() {
                 />
               </div>
               {hasPermission('MANAGE_PRODUCT_COLORS') && (
-                <div className="md:col-span-1">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{t('accentColor') || 'Color'}</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={newProduct.customColor}
-                      onChange={e => setNewProduct({ ...newProduct, customColor: e.target.value })}
-                      className="w-10 h-10 rounded-lg p-0 border-none cursor-pointer"
-                    />
-                    <input 
-                      type="text" 
-                      value={newProduct.customColor} 
-                      onChange={e => setNewProduct({ ...newProduct, customColor: e.target.value })}
-                      className="flex-1 p-2 rounded-lg border border-slate-200 text-[10px] font-mono"
-                    />
+                <div className="md:col-span-2 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                    {t('accentColor') || 'Accent Color'} (Paint Color Palette)
+                  </label>
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2.5 p-2 bg-white rounded-xl border border-slate-200">
+                      {[
+                        { name: 'Royal Blue', value: '#2563eb' },
+                        { name: 'Sky Blue', value: '#0ea5e9' },
+                        { name: 'Forest Green', value: '#15803d' },
+                        { name: 'Emerald Green', value: '#10b981' },
+                        { name: 'Golden Yellow', value: '#eab308' },
+                        { name: 'Warm Orange', value: '#f97316' },
+                        { name: 'Spicy Red', value: '#dc2626' },
+                        { name: 'Crimson Pink', value: '#db2777' },
+                        { name: 'Royal Purple', value: '#8b5cf6' },
+                        { name: 'Plum Slate', value: '#6366f1' },
+                        { name: 'Charcoal Slate', value: '#334155' },
+                        { name: 'Classic Teal', value: '#0d9488' }
+                      ].map((color) => (
+                        <button
+                          key={color.value}
+                          type="button"
+                          onClick={() => setNewProduct({ ...newProduct, customColor: color.value })}
+                          style={{ backgroundColor: color.value }}
+                          className={cn(
+                            "w-8 h-8 rounded-full border-2 transition-all transform hover:scale-115 active:scale-95 shadow-sm",
+                            newProduct.customColor?.toLowerCase() === color.value.toLowerCase() 
+                              ? "border-slate-900 ring-2 ring-slate-400 ring-offset-1 scale-110 shadow-md" 
+                              : "border-white hover:border-slate-300"
+                          )}
+                          title={color.name}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={newProduct.customColor}
+                        onChange={e => setNewProduct({ ...newProduct, customColor: e.target.value })}
+                        className="w-10 h-10 rounded-xl p-0 border border-slate-200 cursor-pointer shadow-sm hover:scale-105 transition-transform"
+                      />
+                      <input 
+                        type="text" 
+                        value={newProduct.customColor} 
+                        onChange={e => setNewProduct({ ...newProduct, customColor: e.target.value })}
+                        className="flex-1 p-2 text-xs font-mono font-bold tracking-wider rounded-lg border border-slate-200 uppercase bg-white"
+                        placeholder="#2563eb"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -7587,6 +7930,7 @@ function PublicCatalog() {
   const [cart, setCart] = useState<{ [key: string]: number }>({});
   const [showCartModal, setShowCartModal] = useState(false);
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [viewType, setViewType] = useState<'grid' | 'list' | 'large_pic'>('grid');
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -7693,6 +8037,49 @@ function PublicCatalog() {
     return acc;
   }, {});
 
+  // Group products by trim-name to display size & grade as sub-bars "same product is a bar"
+  const groupedProductsByCategory = Object.entries(productsByCategory).reduce((acc: any, [category, catProducts]: [string, any]) => {
+    const groups: Record<string, any> = {};
+    
+    catProducts.forEach((p: any) => {
+      const nameKey = p.name.trim();
+      if (!groups[nameKey]) {
+        groups[nameKey] = {
+          name: p.name,
+          category: p.category || 'General',
+          imageUrl: p.imageUrl || '',
+          customColor: p.customColor || '#2563eb',
+          threeDPictureURL: p.threeDPictureURL || '',
+          variants: []
+        };
+      }
+      if (p.imageUrl && !groups[nameKey].imageUrl) {
+        groups[nameKey].imageUrl = p.imageUrl;
+      }
+      if (p.threeDPictureURL && !groups[nameKey].threeDPictureURL) {
+        groups[nameKey].threeDPictureURL = p.threeDPictureURL;
+      }
+      groups[nameKey].variants.push(p);
+    });
+
+    // Ensure variants within each group are sorted by grade
+    const sortedGroups = Object.values(groups).map((group: any) => {
+      group.variants.sort((a: any, b: any) => {
+        if (a.grade !== b.grade) {
+          const numA = parseFloat(a.grade);
+          const numB = parseFloat(b.grade);
+          if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+          return String(a.grade).localeCompare(String(b.grade));
+        }
+        return 0;
+      });
+      return group;
+    });
+
+    acc[category] = sortedGroups;
+    return acc;
+  }, {} as Record<string, any[]>);
+
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 md:p-6">
       <div className="max-w-5xl mx-auto space-y-6 md:space-y-8">
@@ -7773,6 +8160,36 @@ function PublicCatalog() {
           </motion.div>
         )}
 
+        {/* View Layout Switcher bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/60 shadow-sm">
+          <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{t('changeView') || 'Change Product Layout View'}:</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { type: 'grid', label: t('gridView') || 'Grid', icon: LayoutGrid },
+              { type: 'list', label: t('listView') || 'List', icon: List },
+              { type: 'large_pic', label: t('largeView') || 'Large', icon: ImageIcon }
+            ].map((v) => {
+              const Icon = v.icon;
+              const isActive = viewType === v.type;
+              return (
+                <button
+                  key={v.type}
+                  onClick={() => setViewType(v.type as any)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all duration-300 flex items-center gap-1.5 border",
+                    isActive 
+                      ? "bg-slate-900 text-white border-slate-900 shadow-sm" 
+                      : "bg-white text-slate-500 border-slate-200 hover:text-slate-805 hover:bg-slate-50"
+                  )}
+                >
+                  <Icon className={cn("w-3.5 h-3.5", isActive ? "text-blue-400" : "text-slate-400")} />
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="space-y-12">
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -7781,120 +8198,382 @@ function PublicCatalog() {
               ))}
             </div>
           ) : (
-            Object.entries(productsByCategory).map(([category, catProducts]: [string, any]) => (
-              <div key={category} className="space-y-6">
-                <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
-                  <span className="w-2 h-8 bg-blue-600 rounded-full" />
-                  {category}
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {catProducts.map((product: any) => {
-                      const customColor = getProductBrandingColor(product.name, product.customColor);
+            Object.entries(groupedProductsByCategory).map(([category, catGroups]: [string, any]) => {
+              if (catGroups.length === 0) return null;
+              
+              return (
+                <div key={category} className="space-y-6">
+                  <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+                    <span className="w-2 h-8 bg-blue-600 rounded-full" />
+                    {category}
+                  </h2>
+                  <div className={cn(
+                    viewType === 'grid' && "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
+                    viewType === 'list' && "space-y-4",
+                    viewType === 'large_pic' && "grid grid-cols-1 md:grid-cols-2 gap-8"
+                  )}>
+                    {catGroups.map((productGroup: any) => {
+                      const customColor = getProductBrandingColor(productGroup.name, productGroup.customColor);
                       const contrastColor = getContrastColor(customColor);
 
+                      if (viewType === 'list') {
+                        return (
+                          <motion.div
+                            key={productGroup.name}
+                            initial={{ opacity: 0, y: 10 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col gap-4 hover:shadow-md transition-all duration-300"
+                          >
+                            {/* Product Header Row ("A Bar") */}
+                            <div className="flex flex-col sm:flex-row items-center gap-4 pb-4 border-b border-slate-105">
+                              <div className="w-16 h-16 rounded-xl bg-slate-50 flex-shrink-0 relative overflow-hidden shadow-inner border border-slate-100 flex items-center justify-center">
+                                {productGroup.imageUrl ? (
+                                  <img 
+                                    src={productGroup.imageUrl} 
+                                    alt={productGroup.name} 
+                                    className="w-full h-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <Package className="w-6 h-6 text-slate-200" />
+                                )}
+                              </div>
+
+                              <div className="flex-1 min-w-0 text-center sm:text-left space-y-1">
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                  <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">{productGroup.name}</h3>
+                                  <span 
+                                    className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider mx-auto sm:ml-0 inline-block"
+                                    style={{ backgroundColor: customColor, color: contrastColor }}
+                                  >
+                                    {productGroup.category}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                                  {productGroup.variants.length} {productGroup.variants.length > 1 ? t('variants') : "Variant"}
+                                </p>
+                              </div>
+
+                              {productGroup.threeDPictureURL && (
+                                <a 
+                                  href={productGroup.threeDPictureURL} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 text-[10px] font-black uppercase tracking-wider rounded-xl hover:bg-blue-100 transition-colors flex items-center gap-1.5"
+                                >
+                                  <Box className="w-3.5 h-3.5" />
+                                  3D View
+                                </a>
+                              )}
+                            </div>
+
+                            {/* Sub-Bars: Grade and Size Wise Specification */}
+                            <div className="space-y-2">
+                              {productGroup.variants.map((v: any) => (
+                                <div 
+                                  key={v.id} 
+                                  className="flex flex-col md:flex-row items-center justify-between gap-4 p-3 bg-slate-50 border border-slate-100 hover:border-blue-100 rounded-2xl transition-all group/sub"
+                                >
+                                  {/* Grade and Sizes */}
+                                  <div className="flex items-center gap-3 w-full md:w-auto">
+                                    <span 
+                                      className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider shadow-sm text-center min-w-[80px]"
+                                      style={{ backgroundColor: customColor, color: contrastColor }}
+                                    >
+                                      {t('grade')} {v.grade}
+                                    </span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {v.sizes.slice().sort((a: string, b: string) => {
+                                        const indexA = PRODUCT_SIZES.indexOf(a);
+                                        const indexB = PRODUCT_SIZES.indexOf(b);
+                                        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                                        return a.localeCompare(b);
+                                      }).map((size: string) => (
+                                        <span key={size} className="px-2 py-0.5 bg-white text-slate-500 border border-slate-200/50 rounded-lg text-[9px] font-black uppercase shadow-xs">
+                                          {size}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* Pricing and Action */}
+                                  <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto mt-2 md:mt-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-205">
+                                    <div className="text-left md:text-right">
+                                      <span className="text-slate-350 text-[9px] font-black uppercase tracking-widest block leading-3">{t('baseRate')}</span>
+                                      {profile ? (
+                                        <p className="text-sm font-black text-blue-600 font-mono">৳{v.baseRate.toLocaleString()}</p>
+                                      ) : (
+                                        <p className="text-[10px] font-bold text-slate-450 italic">{t('loginToSeePrice')}</p>
+                                      )}
+                                    </div>
+
+                                    <div className="flex gap-1">
+                                      {profile?.role === 'shop_owner' && (
+                                        <button 
+                                          onClick={() => handleAddToCart(v.id)}
+                                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all flex items-center justify-center gap-2 text-[10px] font-black uppercase shadow-md shadow-blue-100 active:scale-95"
+                                        >
+                                          <ShoppingCart className="w-3.5 h-3.5" />
+                                          {t('add')}
+                                        </button>
+                                      )}
+                                      {hasPermission('MANAGE_PRODUCTS') && (
+                                        <button 
+                                          onClick={() => navigate('/products')}
+                                          className="p-2 text-blue-600 hover:bg-blue-50 bg-white border border-slate-150 rounded-xl transition-colors"
+                                          title={t('editProduct')}
+                                        >
+                                          <Settings className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        );
+                      }
+
+                      if (viewType === 'large_pic') {
+                        return (
+                          <motion.div
+                            key={productGroup.name}
+                            initial={{ opacity: 0, scale: 0.98 }}
+                            whileInView={{ opacity: 1, scale: 1 }}
+                            viewport={{ once: true }}
+                            className="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-md hover:shadow-2xl transition-all duration-500"
+                          >
+                            <div className="aspect-[16/10] bg-slate-50 relative overflow-hidden flex items-center justify-center">
+                              {productGroup.imageUrl ? (
+                                <img 
+                                  src={productGroup.imageUrl} 
+                                  alt={productGroup.name} 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <Package className="w-12 h-12 text-slate-200" />
+                              )}
+                              
+                              <div className="absolute top-6 left-6">
+                                <span className="px-4 py-2 bg-white/90 backdrop-blur border border-white/20 text-slate-900 rounded-full text-xs font-black uppercase tracking-widest shadow-xl">
+                                  {productGroup.category}
+                                </span>
+                              </div>
+
+                              {productGroup.threeDPictureURL && (
+                                <div className="absolute top-6 right-6">
+                                  <a 
+                                    href={productGroup.threeDPictureURL} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="px-3.5 py-1.5 bg-blue-600 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5"
+                                  >
+                                    <Box className="w-3.5 h-3.5" />
+                                    3D View
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="p-6 md:p-8 space-y-6">
+                              <div>
+                                <h3 className="text-2xl md:text-3xl font-black text-slate-900 uppercase tracking-tight">{productGroup.name}</h3>
+                                <p className="text-xs font-semibold text-slate-400 mt-1 uppercase tracking-widest">Premium Product Batch Specification</p>
+                              </div>
+
+                              <div className="space-y-3">
+                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
+                                  {t('variants') || "Grade-wise Product Variants"}:
+                                </span>
+
+                                {productGroup.variants.map((v: any) => (
+                                  <div 
+                                    key={v.id} 
+                                    className="p-5 rounded-2xl bg-slate-50 border border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-blue-200 transition-all"
+                                  >
+                                    <div className="space-y-2">
+                                      <div className="flex items-center gap-2">
+                                        <span 
+                                          className="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider shadow-sm"
+                                          style={{ backgroundColor: customColor, color: contrastColor }}
+                                        >
+                                          {t('grade')} {v.grade}
+                                        </span>
+                                        
+                                        {profile ? (
+                                          <p className="text-base font-black text-blue-600 font-mono">৳{v.baseRate.toFixed(2)}</p>
+                                        ) : (
+                                          <p className="text-xs font-medium text-slate-400 italic">{t('loginToSeePrice')}</p>
+                                        )}
+                                      </div>
+
+                                      <div className="flex flex-wrap gap-1.5 pt-1">
+                                        {v.sizes.slice().sort((a: string, b: string) => {
+                                          const indexA = PRODUCT_SIZES.indexOf(a);
+                                          const indexB = PRODUCT_SIZES.indexOf(b);
+                                          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                                          return a.localeCompare(b);
+                                        }).map((size: string) => (
+                                          <span key={size} className="px-2 py-0.5 bg-white text-slate-500 rounded-lg text-[10px] font-bold uppercase border border-slate-200/50">
+                                            {size}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                      {profile?.role === 'shop_owner' && (
+                                        <button 
+                                          onClick={() => handleAddToCart(v.id)}
+                                          className="px-4 py-2.5 bg-blue-600 text-white hover:bg-blue-700 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-md shadow-blue-100 transition-colors"
+                                        >
+                                          <ShoppingCart className="w-4 h-4" />
+                                          {t('addToCart')}
+                                        </button>
+                                      )}
+                                      {hasPermission('MANAGE_PRODUCTS') && (
+                                        <button 
+                                          onClick={() => navigate('/products')}
+                                          className="p-2.5 text-blue-600 hover:bg-blue-50 bg-white border border-slate-250 rounded-xl transition-colors"
+                                          title={t('editProduct')}
+                                        >
+                                          <Settings className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </motion.div>
+                        );
+                      }
+
+                      // Default Grid view style
                       return (
                         <motion.div
-                          key={product.id}
-                          initial={{ opacity: 0, y: 20 }}
+                          key={productGroup.name}
+                          initial={{ opacity: 0, y: 15 }}
                           whileInView={{ opacity: 1, y: 0 }}
                           viewport={{ once: true }}
-                          className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group hover:shadow-xl transition-all duration-500"
+                          className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-xl hover:shadow-slate-150/40 transition-all duration-500"
                         >
-                          <div className="aspect-square bg-slate-50 relative overflow-hidden">
-                            {product.imageUrl ? (
+                          <div className="aspect-square bg-slate-50 relative overflow-hidden border-b border-slate-100 flex items-center justify-center">
+                            {productGroup.imageUrl ? (
                               <img 
-                                src={product.imageUrl} 
-                                alt={product.name} 
+                                src={productGroup.imageUrl} 
+                                alt={productGroup.name} 
                                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                                 referrerPolicy="no-referrer"
                               />
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <Package className="w-12 h-12 text-slate-200" />
-                              </div>
+                              <Package className="w-12 h-12 text-slate-250" />
                             )}
-                            <div className="absolute top-6 right-4 flex flex-col gap-2 z-20">
+                            
+                            <div className="absolute top-4 left-4 z-20">
                               <span 
-                                className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl border border-white/20 backdrop-blur-md"
+                                className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider shadow-md inline-block border border-white/20 backdrop-blur-md"
                                 style={{ backgroundColor: customColor, color: contrastColor }}
                               >
-                                {t('grade')} {product.grade}
+                                {productGroup.category}
                               </span>
-                              {product.threeDPictureURL && (
+                            </div>
+
+                            {productGroup.threeDPictureURL && (
+                              <div className="absolute top-4 right-4 z-20">
                                 <a 
-                                  href={product.threeDPictureURL} 
+                                  href={productGroup.threeDPictureURL} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
-                                  className="bg-white/90 backdrop-blur text-slate-900 p-2 rounded-full shadow-lg hover:bg-white transition-colors flex items-center justify-center"
+                                  className="bg-white/95 backdrop-blur text-slate-900 p-2 rounded-full shadow-lg hover:bg-white hover:scale-105 active:scale-95 transition-all flex items-center justify-center"
                                   title="View 3D"
                                 >
-                                  <Box className="w-4 h-4" />
+                                  <Box className="w-4 h-4 text-blue-600" />
                                 </a>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
-                      
-                          <div className="p-6 space-y-4">
-                            <h3 className="text-xl font-bold text-slate-900">{product.name}</h3>
-                            <div className="flex flex-wrap gap-2 mb-4">
-                              {product.sizes.slice().sort((a: string, b: string) => {
-                                const indexA = PRODUCT_SIZES.indexOf(a);
-                                const indexB = PRODUCT_SIZES.indexOf(b);
-                                if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-                                return a.localeCompare(b);
-                              }).map((size: string) => (
-                                <span key={size} className="px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-bold uppercase">
-                                  {size}
-                                </span>
-                              ))}
+
+                          <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
+                            <div>
+                              <h3 className="text-base font-black text-slate-900 uppercase tracking-tight line-clamp-2 min-h-[40px]" title={productGroup.name}>
+                                {productGroup.name}
+                              </h3>
                             </div>
-                            <div className="pt-4 border-t border-slate-50 flex justify-between items-center">
-                              <div>
-                                <span className="text-slate-400 text-xs font-medium">{t('baseRate')}</span>
-                                {profile ? (
-                                  <p className="text-lg font-bold text-blue-600">৳{product.baseRate.toFixed(2)}</p>
-                                ) : (
-                                  <p className="text-sm font-bold text-slate-400 italic">{t('loginToSeePrice')}</p>
-                                )}
-                              </div>
-                              <div className="flex gap-2">
-                                {profile?.role === 'shop_owner' && (
-                                  <button 
-                                    onClick={() => handleAddToCart(product.id)}
-                                    className="p-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-2"
-                                    title={t('add')}
-                                  >
-                                    <ShoppingCart className="w-5 h-5" />
-                                    <span className="text-[10px] font-bold uppercase">{t('add')}</span>
-                                  </button>
-                                )}
-                                {hasPermission('MANAGE_PRODUCTS') && (
-                                  <button 
-                                    onClick={() => navigate('/products')}
-                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                    title={t('editProduct')}
-                                  >
-                                    <Settings className="w-5 h-5" />
-                                  </button>
-                                )}
-                                {hasPermission('CREATE_ORDERS') && (
-                                  <button 
-                                    onClick={() => navigate('/new-order')}
-                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                    title={t('newOrder')}
-                                  >
-                                    <Plus className="w-5 h-5" />
-                                  </button>
-                                )}
-                              </div>
+
+                            <div className="space-y-2 mt-2">
+                              <span className="text-[8px] font-black uppercase text-slate-400 tracking-wider block border-b border-slate-100 pb-1">
+                                {t('variants') || "Available Variants"}:
+                              </span>
+                              
+                              {productGroup.variants.map((v: any) => (
+                                <div 
+                                  key={v.id} 
+                                  className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100 hover:border-blue-100 flex items-center justify-between gap-2 transition-colors"
+                                >
+                                  <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span 
+                                        className="px-1.5 py-0.5 rounded-md text-[7px] font-black uppercase tracking-wide inline-block shadow-sm"
+                                        style={{ backgroundColor: customColor, color: contrastColor }}
+                                      >
+                                        G{v.grade}
+                                      </span>
+                                      {profile ? (
+                                        <span className="text-[10px] font-black text-blue-600 font-mono">৳{v.baseRate.toLocaleString()}</span>
+                                      ) : (
+                                        <span className="text-[8px] font-bold text-slate-400 italic">{t('loginToSeePrice')}</span>
+                                      )}
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap gap-0.5 mt-1">
+                                      {v.sizes.slice().sort((a: string, b: string) => {
+                                        const indexA = PRODUCT_SIZES.indexOf(a);
+                                        const indexB = PRODUCT_SIZES.indexOf(b);
+                                        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                                        return a.localeCompare(b);
+                                      }).map((size: string) => (
+                                        <span key={size} className="px-1 py-px bg-white text-slate-450 border border-slate-100 rounded text-[7px] font-bold uppercase">
+                                          {size}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex gap-1 items-center shrink-0">
+                                    {profile?.role === 'shop_owner' && (
+                                      <button 
+                                        onClick={() => handleAddToCart(v.id)}
+                                        className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center shadow-sm"
+                                        title={t('add')}
+                                      >
+                                        <ShoppingCart className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    {hasPermission('MANAGE_PRODUCTS') && (
+                                      <button 
+                                        onClick={() => navigate('/products')}
+                                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                        title={t('editProduct')}
+                                      >
+                                        <Settings className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         </motion.div>
                       );
-                  })}
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -8844,7 +9523,7 @@ function ProductCalculation() {
                   <td colSpan={4} className="p-20 text-center">
                     <div className="flex flex-col items-center gap-4">
                       <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center">
-                        <ShoppingBag className="w-8 h-8 text-slate-200" />
+                        <ShoppingCart className="w-8 h-8 text-slate-200" />
                       </div>
                       <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">{t('noOrders')} in this period</p>
                     </div>
@@ -8889,6 +9568,1413 @@ function ProductCalculation() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// INFOGRAPHIC TREE DESIGN: RECURSIVE SUPERVISOR RELATIONSHIP TREE NODE
+// =========================================================================
+function VisualTreeViewNode({ 
+  node, 
+  users, 
+  depth = 0, 
+  onDropOnNode,
+  onClearSupervisor,
+  getUserNameById
+}: { 
+  node: any; 
+  users: any[]; 
+  depth: number;
+  onDropOnNode: (draggedUid: string, targetUid: string) => any;
+  onClearSupervisor: (uid: string) => any;
+  getUserNameById: (uid: string) => any;
+  key?: any;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const children = users.filter(u => u.parentUid === node.uid);
+  
+  // Vibrant concentric outline rings based on tier level
+  let ringStyle = "border-slate-300 ring-slate-100/60 shadow-slate-100/30";
+  let bgTagStyle = "bg-slate-100 text-slate-800";
+  
+  if (node.role === 'owner' || node.role === 'admin') {
+    ringStyle = "border-blue-600 ring-blue-100/70 shadow-blue-50/20";
+    bgTagStyle = "bg-blue-50 text-blue-600 border border-blue-100";
+  } else if (node.role === 'manager' || node.role === 'field_manager') {
+    ringStyle = "border-emerald-500 ring-emerald-100/70 shadow-emerald-50/20";
+    bgTagStyle = "bg-emerald-50 text-emerald-600 border border-emerald-100";
+  } else if (node.role === 'foreman' || node.role === 'worker_foreman' || node.role === 'manager_foreman') {
+    ringStyle = "border-amber-500 ring-amber-100/70 shadow-amber-50/20";
+    bgTagStyle = "bg-amber-50 text-amber-600 border border-amber-100";
+  } else if (node.role === 'worker' || node.role === 'delivery_man') {
+    ringStyle = "border-indigo-500 ring-indigo-100/70 shadow-indigo-50/20";
+    bgTagStyle = "bg-indigo-50 text-indigo-600 border border-indigo-100";
+  } else {
+    ringStyle = "border-purple-500 ring-purple-100/70 shadow-purple-50/20";
+    bgTagStyle = "bg-purple-50 text-purple-600 border border-purple-100";
+  }
+
+  const userInitials = node.displayName 
+    ? node.displayName.substring(0, 2).toUpperCase() 
+    : node.email.substring(0, 2).toUpperCase();
+
+  return (
+    <div className="flex flex-col items-center">
+      {/* Visual Circle Node Card */}
+      <div 
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/plain", node.uid);
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsHovered(true);
+        }}
+        onDragLeave={() => setIsHovered(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsHovered(false);
+          const draggedUid = e.dataTransfer.getData("text/plain");
+          if (draggedUid && draggedUid !== node.uid) {
+            onDropOnNode(draggedUid, node.uid);
+          }
+        }}
+        className={cn(
+          "relative flex flex-col items-center p-4 rounded-3xl transition-all duration-300 bg-white border border-slate-100 shadow-sm max-w-[150px] text-center",
+          isHovered ? "scale-110 ring-4 ring-offset-2 ring-indigo-500 bg-indigo-50/10 border-dashed border-indigo-300" : "hover:scale-105"
+        )}
+      >
+        {/* Concentric Circle Elements styling matching the design template */}
+        <div className={cn(
+          "w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 flex items-center justify-center p-1.5 bg-white relative transition-all duration-300 ring-4",
+          ringStyle
+        )}>
+          {/* Internal Inner Circle */}
+          <div className="w-full h-full rounded-full bg-slate-900 overflow-hidden flex flex-col items-center justify-center text-white p-1 text-center font-black relative shadow-inner">
+            <span className="text-xs sm:text-sm uppercase font-black leading-3 max-w-[60px] truncate mb-0.5">
+              {userInitials}
+            </span>
+            <span className="text-[7px] sm:text-[8px] tracking-widest uppercase opacity-75 mt-0.5 scale-90 truncate max-w-[62px]">
+              {node.role.replace('_', ' ').substring(0, 7)}
+            </span>
+            
+            {isHovered && (
+              <div className="absolute inset-0 bg-indigo-600 flex flex-col items-center justify-center text-[8px] font-black uppercase text-center p-1 rounded-full animate-pulse">
+                <span>Set Report</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Description Tags below the circle */}
+        <div className="mt-3 space-y-1">
+          <h4 className="font-extrabold text-slate-900 text-xs tracking-tight truncate max-w-[120px]" title={node.displayName || node.email}>
+            {node.displayName || node.email.split('@')[0]}
+          </h4>
+          <div className="flex items-center justify-center gap-1">
+            <span className={cn("px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider", bgTagStyle)}>
+              {node.role.replace('_', ' ')}
+            </span>
+            {node.parentUid && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClearSupervisor(node.uid);
+                }}
+                className="p-1 hover:bg-red-55 text-slate-400 hover:text-red-500 rounded transition-colors"
+                title="Disconnect Supervisor relationship"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Recursive Render connector branches with children nodes */}
+      {children.length > 0 && (
+        <div className="flex flex-col items-center w-full mt-4">
+          {/* Middle vertical feed line */}
+          <div className="w-0.5 h-6 bg-slate-300"></div>
+
+          {/* Children block list row */}
+          <div className="flex justify-center items-start gap-x-6 sm:gap-x-12 pt-6 w-full relative">
+            {children.map((child, index) => {
+              const isFirst = index === 0;
+              const isLast = index === children.length - 1;
+              return (
+                <div key={child.uid} className="relative flex flex-col items-center flex-1">
+                  {/* Continuous horizontal bridges connectors */}
+                  {children.length > 1 && (
+                    <div className={cn(
+                      "absolute top-0 h-0.5 bg-slate-300",
+                      isFirst ? "left-1/2 right-0" :
+                      isLast ? "left-0 right-1/2" :
+                      "left-0 right-0"
+                    )} />
+                  )}
+                  {/* Vertical branch in-feed to child node */}
+                  <div className="w-0.5 h-6 bg-slate-300"></div>
+
+                  {/* Visual Node recursion */}
+                  <VisualTreeViewNode 
+                    node={child} 
+                    users={users} 
+                    depth={depth + 1} 
+                    onDropOnNode={onDropOnNode}
+                    onClearSupervisor={onClearSupervisor}
+                    getUserNameById={getUserNameById}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =========================================================================
+// INFOGRAPHIC ROLE TREE DESIGN: SYNCED WITH THE MULTI-COLORED SHUTTERSTOCK PATTERN
+// =========================================================================
+function VisualRoleTreeChart({ users }: { users: any[] }) {
+  // Configured roles with clear hierarchy sequence, colorful borders & details
+  const tiers = [
+    { 
+      id: 'root', 
+      name: 'Executive Leadership', 
+      roles: ['owner', 'admin'], 
+      color: 'border-blue-600 ring-blue-100',
+      tagColor: 'bg-blue-50 text-blue-600 border border-blue-100',
+      desc: 'System directors, owners, and digital administration supervisors.'
+    },
+    { 
+      id: 'managers', 
+      name: 'Operations & Management', 
+      roles: ['manager', 'field_manager', 'manager_foreman'], 
+      color: 'border-emerald-500 ring-emerald-100',
+      tagColor: 'bg-emerald-50 text-emerald-600 border border-emerald-100',
+      desc: 'Regional hubs directors, territory leads, and logistics managers.'
+    },
+    { 
+      id: 'foremen', 
+      name: 'Command Supervisors', 
+      roles: ['foreman', 'worker_foreman'], 
+      color: 'border-amber-500 ring-amber-100',
+      tagColor: 'bg-amber-50 text-amber-600 border border-amber-100',
+      desc: 'Site coordinators, field foremen, and shift team-leaders.'
+    },
+    { 
+      id: 'personnel', 
+      name: 'Core Personnel & Workers', 
+      roles: ['worker', 'delivery_man', 'delivery_manager'], 
+      color: 'border-indigo-500 ring-indigo-100',
+      tagColor: 'bg-indigo-50 text-indigo-600 border border-indigo-100',
+      desc: 'Field execution specialists, riders, and on-premises workforce.'
+    },
+    { 
+      id: 'external', 
+      name: 'Merchant Partners', 
+      roles: ['shop_owner'], 
+      color: 'border-purple-500 ring-purple-100',
+      tagColor: 'bg-purple-50 text-purple-600 border border-purple-100',
+      desc: 'Affiliated stores, external counters and commercial retail representatives.'
+    }
+  ];
+
+  return (
+    <div className="flex flex-col items-center w-full space-y-6">
+      <div className="text-center max-w-lg mb-4">
+        <h3 className="text-lg font-black text-slate-800 uppercase tracking-wider">Enterprise Board Role Flow</h3>
+        <p className="text-xs text-slate-400">Infographic structural tiers showing personnel assignments across system-defined roles.</p>
+      </div>
+
+      <div className="flex flex-col items-center w-full relative">
+        {tiers.map((tier, index) => {
+          const matchingUsers = users.filter(u => tier.roles.includes(u.role));
+          return (
+            <div key={tier.id} className="flex flex-col items-center w-full relative">
+              {/* Connected vertical feed line */}
+              {index > 0 && <div className="w-0.5 h-10 bg-slate-300"></div>}
+
+              {/* Tier circle hub with descriptive details */}
+              <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-md w-full max-w-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 relative transition-transform hover:scale-[1.01] duration-300">
+                <div className="flex items-center gap-4">
+                  {/* Concentric Ring Graphic */}
+                  <div className={cn(
+                    "w-16 h-16 rounded-full border-4 flex items-center justify-center p-1 bg-white font-black shrink-0 ring-4",
+                    tier.color
+                  )}>
+                    <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-white text-xs font-black">
+                      T{index + 1}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-extrabold text-slate-900 text-sm uppercase tracking-tight">{tier.name}</h4>
+                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">{tier.desc}</p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {tier.roles.map(r => (
+                        <span key={r} className="text-[8px] bg-slate-100 text-slate-400 rounded px-1.5 font-bold uppercase tracking-wider border border-slate-100">
+                          {r.replace('_', ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Users holding roles inside this tier */}
+                <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 shrink-0 md:w-56">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[9px] font-black uppercase text-slate-400">Assigned Staff</span>
+                    <span className={cn("px-2 py-0.5 rounded text-[9px] font-black uppercase", tier.tagColor)}>
+                      {matchingUsers.length} Users
+                    </span>
+                  </div>
+
+                  {matchingUsers.length === 0 ? (
+                    <span className="text-[10px] text-slate-300 italic block">None registered</span>
+                  ) : (
+                    <div className="max-h-24 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                      {matchingUsers.map(u => (
+                        <div key={u.uid} className="flex items-center justify-between p-1 bg-white border border-slate-100 rounded">
+                          <span className="text-[10px] font-bold text-slate-700 truncate max-w-[120px]">{u.displayName || u.email}</span>
+                          <span className="text-[8px] bg-slate-50 text-slate-400 px-1 rounded uppercase font-bold">{u.role}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OrganizationPanel() {
+  const { t } = useLanguage();
+  const { showToast } = useToast();
+  const { profile } = useAuth();
+  
+  // Real-time collections and states
+  const [users, setUsers] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [featureFlags, setFeatureFlags] = useState<any>({
+    branchingEnabledForOthers: false,
+    treeEnabledForOthers: false,
+    hrEnabledForOthers: false
+  });
+  const [customRoles, setCustomRoles] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Layout states
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'owner';
+  const [activeTab, setActiveTab] = useState<'features' | 'branching' | 'tree' | 'hr'>('features');
+
+  // Sub-features states
+  // 1. Branching
+  const [newBranch, setNewBranch] = useState({ name: '', parentBranchId: '', ownerUid: '', permissions: [] as string[] });
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
+
+  // 2. Tree perspective
+  const [treePerspective, setTreePerspective] = useState<'role' | 'area' | 'supervisor'>('role');
+  const [selectingSupervisorForUid, setSelectingSupervisorForUid] = useState<string | null>(null);
+
+  // 3. HR
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUserForHR, setSelectedUserForHR] = useState<any | null>(null);
+  const [isTypingCustomRole, setIsTypingCustomRole] = useState(false);
+  const [typedRoleName, setTypedRoleName] = useState('');
+  const [hrForm, setHrForm] = useState({ salary: '', joinDate: '', rating: '5', supervisorUid: '' });
+
+  // Lifecycle subscriptions
+  useEffect(() => {
+    // 1. Subscribe to users
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      setUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
+    });
+
+    // 2. Subscribe to branches
+    const unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
+      setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // 3. Subscribe to admin features
+    const unsubFeatures = onSnapshot(doc(db, 'settings', 'admin_features'), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
+        setFeatureFlags(data);
+      }
+    });
+
+    // 4. Subscribe to custom roles
+    const unsubRoles = onSnapshot(doc(db, 'settings', 'custom_roles'), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        setCustomRoles(docSnapshot.data().roles || []);
+      } else {
+        setCustomRoles([]);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      unsubUsers();
+      unsubBranches();
+      unsubFeatures();
+      unsubRoles();
+    };
+  }, []);
+
+  // Sync active tab when permissions load so a non-admin gets redirected if features are disabled
+  useEffect(() => {
+    if (!loading) {
+      if (!isAdmin) {
+        if (featureFlags.branchingEnabledForOthers) {
+          setActiveTab('branching');
+        } else if (featureFlags.treeEnabledForOthers) {
+          setActiveTab('tree');
+        } else if (featureFlags.hrEnabledForOthers) {
+          setActiveTab('hr');
+        }
+      }
+    }
+  }, [loading, isAdmin, featureFlags]);
+
+  // Auth Protection Guard
+  const canAccessBranching = isAdmin || featureFlags.branchingEnabledForOthers;
+  const canAccessTree = isAdmin || featureFlags.treeEnabledForOthers;
+  const canAccessHR = isAdmin || featureFlags.hrEnabledForOthers;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
+        <div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" />
+        <p className="text-slate-500 font-bold uppercase text-xs tracking-widest">{t('loading') || 'Loading Organization Panels...'}</p>
+      </div>
+    );
+  }
+
+  // 1. Feature flag toggles update (Settings Board)
+  const toggleFeatureFlag = async (flagKey: string) => {
+    if (!isAdmin) return;
+    try {
+      const nextValue = !featureFlags[flagKey];
+      await setDoc(doc(db, 'settings', 'admin_features'), {
+        [flagKey]: nextValue
+      }, { merge: true });
+      showToast('Settings Updated Successfully');
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to update feature flags', 'error');
+    }
+  };
+
+  // 2. Branch operations
+  const handleSaveBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBranch.name.trim()) return;
+    try {
+      const payload = {
+        name: newBranch.name,
+        parentBranchId: newBranch.parentBranchId || null,
+        ownerUid: newBranch.ownerUid || '',
+        permissions: newBranch.permissions,
+        updatedAt: new Date().toISOString()
+      };
+
+      if (editingBranchId) {
+        await updateDoc(doc(db, 'branches', editingBranchId), payload);
+        showToast('Branch details updated successfully');
+      } else {
+        await addDoc(collection(db, 'branches'), {
+          ...payload,
+          createdAt: new Date().toISOString()
+        });
+        showToast('New Branch created successfully');
+      }
+
+      setNewBranch({ name: '', parentBranchId: '', ownerUid: '', permissions: [] });
+      setEditingBranchId(null);
+    } catch (e) {
+      console.error(e);
+      showToast('Error saving branch details', 'error');
+    }
+  };
+
+  const startEditBranch = (branch: any) => {
+    setNewBranch({
+      name: branch.name,
+      parentBranchId: branch.parentBranchId || '',
+      ownerUid: branch.ownerUid || '',
+      permissions: branch.permissions || []
+    });
+    setEditingBranchId(branch.id);
+  };
+
+  const handleDeleteBranch = async (branchId: string) => {
+    if (!window.confirm('Are you sure you want to delete this branch? Users assigned will become unassigned.')) return;
+    try {
+      await deleteDoc(doc(db, 'branches', branchId));
+      showToast('Branch successfully deleted');
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to delete branch', 'error');
+    }
+  };
+
+  // 3. HR Operations & Custom Role Creator
+  const handleSelectUserForHR = (user: any) => {
+    setSelectedUserForHR(user);
+    setHrForm({
+      salary: user.salary || '',
+      joinDate: user.joinDate || '',
+      rating: user.rating || '5',
+      supervisorUid: user.parentUid || ''
+    });
+    setTypedRoleName('');
+    setIsTypingCustomRole(false);
+  };
+
+  const handleSaveHRDossier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserForHR) return;
+
+    try {
+      let finalRole = selectedUserForHR.role;
+
+      // Handle custom typed role saving
+      if (isTypingCustomRole && typedRoleName.trim()) {
+        finalRole = typedRoleName.trim();
+        const updatedRolesList = Array.from(new Set([...customRoles, finalRole]));
+        await setDoc(doc(db, 'settings', 'custom_roles'), { roles: updatedRolesList }, { merge: true });
+      }
+
+      await updateDoc(doc(db, 'users', selectedUserForHR.uid), {
+        role: finalRole,
+        salary: hrForm.salary,
+        joinDate: hrForm.joinDate,
+        rating: hrForm.rating,
+        parentUid: hrForm.supervisorUid || null,
+        updatedAt: new Date().toISOString()
+      });
+
+      showToast('HR Profile updated successfully');
+      setSelectedUserForHR(null);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to save HR details', 'error');
+    }
+  };
+
+  // Quick helper to fetch parent supervisor name
+  const getUserNameById = (uid: string) => {
+    const found = users.find(u => u.uid === uid);
+    return found ? (found.displayName || found.email) : 'Root Overseer';
+  };
+
+  // 4. Supervisor Higher Key Assignment right in the live tree structure
+  const handleAssignSupervisorDragDrop = async (subordinateUid: string, supervisorUid: string) => {
+    if (subordinateUid === supervisorUid) {
+      showToast("A user cannot report to themselves!", "error");
+      return;
+    }
+    
+    // Check circular reporting paths
+    let currentParentId = supervisorUid;
+    const maxDepth = 50;
+    let iterations = 0;
+    let isCircular = false;
+    while (currentParentId && iterations < maxDepth) {
+      if (currentParentId === subordinateUid) {
+        isCircular = true;
+        break;
+      }
+      const parentUser = users.find(u => u.uid === currentParentId);
+      currentParentId = parentUser?.parentUid || "";
+      iterations++;
+    }
+
+    if (isCircular) {
+      showToast("Circular path detected! Action cancelled.", "error");
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'users', subordinateUid), {
+        parentUid: supervisorUid,
+        updatedAt: new Date().toISOString()
+      });
+      showToast(`${getUserNameById(subordinateUid)} now reports to ${getUserNameById(supervisorUid)}!`, "success");
+    } catch (e) {
+      console.error(e);
+      showToast("Failed to assign supervisor reporting key", "error");
+    }
+  };
+
+  const handleClearSupervisorDirect = async (scoutUid: string) => {
+    try {
+      await updateDoc(doc(db, 'users', scoutUid), {
+        parentUid: null,
+        updatedAt: new Date().toISOString()
+      });
+      showToast(`Successfully cleared supervisor reports key for ${getUserNameById(scoutUid)}`);
+    } catch (e) {
+      console.error(e);
+      showToast("Failed to clear supervisor assignment", "error");
+    }
+  };
+
+  return (
+    <div className="space-y-8 pb-12">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter flex items-center gap-3">
+            <GitBranch className="w-8 h-8 text-blue-600" />
+            {t('orgPanel') || 'Organization & HR'}
+          </h1>
+          <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-1">
+            Enterprise structure, custom roles and access permissions
+          </p>
+        </div>
+
+        {/* Tab Selection */}
+        <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100 rounded-2xl w-fit">
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('features')}
+              className={cn(
+                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
+                activeTab === 'features' ? "bg-slate-900 text-white shadow" : "text-slate-500 hover:text-slate-900"
+              )}
+            >
+              Feature Board
+            </button>
+          )}
+          {canAccessBranching && (
+            <button
+              onClick={() => setActiveTab('branching')}
+              className={cn(
+                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
+                activeTab === 'branching' ? "bg-slate-900 text-white shadow" : "text-slate-500 hover:text-slate-900"
+              )}
+            >
+              {t('branching') || 'Branching Setup'}
+            </button>
+          )}
+          {canAccessTree && (
+            <button
+              onClick={() => setActiveTab('tree')}
+              className={cn(
+                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
+                activeTab === 'tree' ? "bg-slate-900 text-white shadow" : "text-slate-500 hover:text-slate-900"
+              )}
+            >
+              {t('orgTree') || 'Org Tree'}
+            </button>
+          )}
+          {canAccessHR && (
+            <button
+              onClick={() => setActiveTab('hr')}
+              className={cn(
+                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
+                activeTab === 'hr' ? "bg-slate-900 text-white shadow" : "text-slate-500 hover:text-slate-900"
+              )}
+            >
+              {t('hrSection') || 'HR Section'}
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* VIEW A: FEATURE ENABLEMENT BOARD CONTROLLER */}
+      {activeTab === 'features' && isAdmin && (
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+                <Workflow className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Branching System</h3>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">
+                  Permit non-admin staff to access and customize branch-specific structures and regional parameters.
+                </p>
+              </div>
+            </div>
+            <div className="mt-8 flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Available to Others</span>
+              <button 
+                onClick={() => toggleFeatureFlag('branchingEnabledForOthers')}
+                className={`w-12 h-6 rounded-full flex items-center p-1 cursor-pointer transition-colors ${
+                  featureFlags.branchingEnabledForOthers ? 'bg-emerald-500' : 'bg-slate-200'
+                }`}
+              >
+                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                  featureFlags.branchingEnabledForOthers ? 'translate-x-6' : 'translate-x-0'
+                }`} />
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center">
+                <Network className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Organization Trees</h3>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">
+                  Authorize other roles to view or rearrange role, location, or direct reporting heirarchy supervisor keys.
+                </p>
+              </div>
+            </div>
+            <div className="mt-8 flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Available to Others</span>
+              <button 
+                onClick={() => toggleFeatureFlag('treeEnabledForOthers')}
+                className={`w-12 h-6 rounded-full flex items-center p-1 cursor-pointer transition-colors ${
+                  featureFlags.treeEnabledForOthers ? 'bg-emerald-500' : 'bg-slate-200'
+                }`}
+              >
+                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                  featureFlags.treeEnabledForOthers ? 'translate-x-6' : 'translate-x-0'
+                }`} />
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
+                <UserCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">HR Profiles & Custom Roles</h3>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">
+                  Enable managers or staff to write brand new user positions, assign salaries, or set worker join parameters.
+                </p>
+              </div>
+            </div>
+            <div className="mt-8 flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Available to Others</span>
+              <button 
+                onClick={() => toggleFeatureFlag('hrEnabledForOthers')}
+                className={`w-12 h-6 rounded-full flex items-center p-1 cursor-pointer transition-colors ${
+                  featureFlags.hrEnabledForOthers ? 'bg-emerald-500' : 'bg-slate-200'
+                }`}
+              >
+                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                  featureFlags.hrEnabledForOthers ? 'translate-x-6' : 'translate-x-0'
+                }`} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW B: BRANCHING SETUP SECTION */}
+      {activeTab === 'branching' && canAccessBranching && (
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Branch creator form */}
+          <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm h-fit space-y-6">
+            <div>
+              <h2 className="text-lg font-black uppercase tracking-wider text-slate-950 flex items-center gap-2">
+                <GitBranch className="w-5 h-5 text-blue-600" />
+                {editingBranchId ? 'Modify Branch' : 'Add New Branch'}
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Design permission-scoped parameters for branches</p>
+            </div>
+
+            <form onSubmit={handleSaveBranch} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2">Branch Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Chittagong Sub-Division"
+                  value={newBranch.name}
+                  onChange={(e) => setNewBranch({ ...newBranch, name: e.target.value })}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2">Parent Branch (Hierarchy)</label>
+                <select
+                  value={newBranch.parentBranchId}
+                  onChange={(e) => setNewBranch({ ...newBranch, parentBranchId: e.target.value })}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
+                >
+                  <option value="">-- No Parent (Top Branch) --</option>
+                  {branches.filter(b => b.id !== editingBranchId).map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2">Specific Branch Manager</label>
+                <select
+                  value={newBranch.ownerUid}
+                  onChange={(e) => setNewBranch({ ...newBranch, ownerUid: e.target.value })}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
+                >
+                  <option value="">-- No Specific Manager assigned --</option>
+                  {users.map(u => (
+                    <option key={u.uid} value={u.uid}>{u.displayName || u.email} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2">Assigned Features</label>
+                <div className="space-y-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                  {[
+                    { key: 'access_user', label: 'Access User directory & modifications' },
+                    { key: 'user_permission', label: 'Modify specific user permissions overrides' },
+                    { key: 'collection', label: 'Submit & view order collections' },
+                    { key: 'order', label: 'Create and ship sub-orders' }
+                  ].map((feat) => {
+                    const isChecked = newBranch.permissions.includes(feat.key);
+                    return (
+                      <label key={feat.key} className="flex items-center gap-3 cursor-pointer p-1">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            const current = newBranch.permissions;
+                            const next = isChecked
+                              ? current.filter(k => k !== feat.key)
+                              : [...current, feat.key];
+                            setNewBranch({ ...newBranch, permissions: next });
+                          }}
+                          className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-xs font-bold text-slate-700">{feat.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-slate-900 font-black uppercase text-[10px] tracking-widest text-white rounded-xl hover:bg-black transition-all"
+                >
+                  {editingBranchId ? 'Save Edits' : 'Deploy Branch'}
+                </button>
+                {editingBranchId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingBranchId(null);
+                      setNewBranch({ name: '', parentBranchId: '', ownerUid: '', permissions: [] });
+                    }}
+                    className="px-4 bg-slate-100 font-bold uppercase text-[10px] text-slate-600 rounded-xl hover:bg-slate-200"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+
+          {/* Branches display trees */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+              <h3 className="text-md font-black uppercase tracking-wider text-slate-900 mb-6">Current Organizational Branches</h3>
+
+              {branches.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 uppercase font-black tracking-widest text-xs">
+                  No branches defined. Build one to segment permission regions.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {branches.map((branch) => {
+                    const parent = branches.find(b => b.id === branch.parentBranchId);
+                    return (
+                      <div key={branch.id} className="p-6 bg-slate-50/50 rounded-2xl border border-slate-150 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">{branch.name}</h4>
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <span>Manager: <strong className="text-slate-600">{getUserNameById(branch.ownerUid)}</strong></span>
+                            <span>•</span>
+                            <span>Parent Branch: <strong className="text-blue-500">{parent ? parent.name : 'Top Level Office'}</strong></span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {branch.permissions?.map((p: string) => (
+                              <span key={p} className="px-2 py-0.5 bg-white border border-slate-200 text-slate-500 rounded text-[8px] font-black uppercase">{p.replace('_', ' ')}</span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => startEditBranch(branch)}
+                            className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors border border-transparent"
+                            title="Edit details"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBranch(branch.id)}
+                            className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors border border-transparent"
+                            title="Delete branch"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW C: ORGANIZATION HIERARCHY TREE */}
+      {activeTab === 'tree' && canAccessTree && (
+        <div className="space-y-6">
+          <div className="flex gap-2 p-1.5 bg-slate-100 rounded-2xl w-fit">
+            {[
+              { id: 'role', label: 'Role Hierarchy' },
+              { id: 'area', label: 'Area Structure List' },
+              { id: 'supervisor', label: 'Direct Supervisor Tree' }
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setTreePerspective(p.id as any);
+                  setSelectingSupervisorForUid(null);
+                }}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
+                  treePerspective === p.id ? "bg-white text-slate-900 shadow-sm font-black" : "text-slate-500 hover:text-slate-900"
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 1. ROLE HIERARCHICAL TREE PERSPECTIVE */}
+          {treePerspective === 'role' && (
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+              <VisualRoleTreeChart users={users} />
+            </div>
+          )}
+
+          {/* 2. AREA-WISE REGISTERED TREE LIST */}
+          {treePerspective === 'area' && (
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-6">
+              <div>
+                <h3 className="text-lg font-black uppercase tracking-wider text-slate-950">Area Operational Branches</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Shops and staff segmented by territory / area</p>
+              </div>
+
+              {users.reduce((acc: string[], cur) => {
+                if (cur.assignedAreas) {
+                  cur.assignedAreas.forEach((ar: string) => {
+                    if (!acc.includes(ar)) acc.push(ar);
+                  });
+                }
+                return acc;
+              }, []).length === 0 ? (
+                <div className="p-12 text-center text-slate-300 font-bold uppercase tracking-widest text-xs">
+                  No areas assigned to organizational personnel yet.
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {users.reduce((acc: string[], cur) => {
+                    if (cur.assignedAreas) {
+                      cur.assignedAreas.forEach((ar: string) => {
+                        if (!acc.includes(ar)) acc.push(ar);
+                      });
+                    }
+                    return acc;
+                  }, []).map((area) => (
+                    <div key={area} className="p-6 bg-slate-50/50 border border-slate-150 rounded-2xl space-y-4">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-5 h-5 text-emerald-600 animate-bounce" />
+                        <h4 className="font-black text-slate-900 uppercase text-sm tracking-widest">{area} Area</h4>
+                      </div>
+
+                      <div className="grid md:grid-cols-2 gap-4 ml-6">
+                        {/* Area Staff */}
+                        <div className="bg-white p-4 rounded-xl border border-slate-150 space-y-2">
+                          <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Assigned Staff</span>
+                          <div className="space-y-1.5">
+                            {users.filter(u => u.assignedAreas?.includes(area)).map(usr => (
+                              <div key={usr.uid} className="flex items-center justify-between p-1 bg-slate-50/50 rounded px-2">
+                                <span className="text-xs font-extrabold text-slate-800">{usr.displayName || usr.email}</span>
+                                <span className="text-[8px] font-black text-slate-400 bg-white rounded px-1">{usr.role}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Associated Offices (Branch level) */}
+                        <div className="bg-white p-4 rounded-xl border border-slate-150 space-y-2">
+                          <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Related Branches</span>
+                          <div className="space-y-1.5">
+                            {branches.filter(b => b.name.toLowerCase().includes(area.toLowerCase())).length === 0 ? (
+                              <p className="text-[10px] italic text-slate-300">No matching physical branches found</p>
+                            ) : (
+                              branches.filter(b => b.name.toLowerCase().includes(area.toLowerCase())).map(b => (
+                                <div key={b.id} className="text-xs font-bold text-slate-700 bg-slate-50/50 p-1 rounded px-2">
+                                  {b.name}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 3. LIVE SUPERVISOR RELATIONSHIP TREE WITH HIGHER KEY UPDATES */}
+          {treePerspective === 'supervisor' && (() => {
+            // Unassigned personnel has no supervisor and are not root leaders
+            // Calculate active visual roots
+            const coreDirectors = users.filter(u => u.role === 'owner' || u.role === 'admin');
+            const activeSupervisors = users.filter(u => !u.parentUid && users.some(sub => sub.parentUid === u.uid));
+            
+            const combinedRoots = Array.from(new Map(
+              [...coreDirectors, ...activeSupervisors]
+                .filter(u => !u.parentUid || !users.some(parent => parent.uid === u.parentUid))
+                .map(item => [item.uid, item])
+            ).values());
+            
+            const visualRoots = combinedRoots.length > 0 
+              ? combinedRoots 
+              : (users.filter(u => u.role === 'manager' || u.role === 'owner').length > 0 
+                  ? users.filter(u => u.role === 'manager' || u.role === 'owner').slice(0, 1) 
+                  : users.slice(0, 1));
+                  
+            const rootUids = visualRoots.map(r => r.uid);
+            
+            // Unassigned: anyone who has no parentUid, is NOT a root, and has no subordinates (independent workers)
+            const unassignedStaff = users.filter(usr => {
+              const isRoot = rootUids.includes(usr.uid);
+              const hasSupervisor = !!usr.parentUid;
+              const hasSubordinates = users.some(child => child.parentUid === usr.uid);
+              return !isRoot && !hasSupervisor && !hasSubordinates;
+            });
+
+            return (
+              <div className="grid lg:grid-cols-4 gap-8">
+                {/* Control Panel Panel containing Unassigned pool and drop resetting zone */}
+                <div className="lg:col-span-1 space-y-6">
+                  {/* Unassigned Pool container */}
+                  <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
+                    <div>
+                      <h4 className="font-black text-slate-900 text-sm uppercase tracking-wider flex items-center gap-1.5">
+                        <UserPlus className="w-4 h-4 text-indigo-600 animate-pulse" />
+                        Unassigned Staff
+                      </h4>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 leading-normal">
+                        Drag any employee onto any tree supervisor card to assign them under that supervisor.
+                      </p>
+                    </div>
+
+                    {unassignedStaff.length === 0 ? (
+                      <div className="p-8 border border-dashed border-slate-200 rounded-2xl text-center text-[10px] uppercase font-black tracking-wider text-slate-300 bg-slate-50/50">
+                        All staff assigned!
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1 scrollbar-thin">
+                        {unassignedStaff.map(u => (
+                          <div 
+                            key={u.uid}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("text/plain", u.uid);
+                              e.dataTransfer.effectAllowed = "move";
+                            }}
+                            className="cursor-grab active:cursor-grabbing p-3 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-2xl flex flex-col justify-between transition-all duration-300 hover:border-indigo-200 group"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-xl bg-slate-800 text-white font-black flex items-center justify-center text-[10px] tracking-tight truncate border border-slate-700">
+                                {u.displayName ? u.displayName.substring(0, 2).toUpperCase() : u.email.substring(0, 2).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <h5 className="text-[11px] font-black text-slate-800 tracking-tight truncate group-hover:text-indigo-900">
+                                  {u.displayName || u.email.split('@')[0]}
+                                </h5>
+                                <span className="text-[8px] font-bold text-slate-450 uppercase tracking-widest block font-mono">
+                                  {u.role.replace('_', ' ')}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            {/* Mobile / Responsive Selector Fallback */}
+                            <div className="mt-2.5 pt-2 border-t border-slate-205/50">
+                              <select
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleAssignSupervisorDragDrop(u.uid, e.target.value);
+                                    e.target.value = "";
+                                  }
+                                }}
+                                className="w-full text-[9px] bg-white border border-slate-200 p-1.5 rounded-lg font-bold text-slate-600 focus:outline-none"
+                              >
+                                <option value="">-- Click to assign --</option>
+                                {users.filter(usr => usr.uid !== u.uid).map(usr => (
+                                  <option key={usr.uid} value={usr.uid}>
+                                    {usr.displayName || usr.email} ({usr.role})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reset drop area / garbage bin */}
+                  <div 
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.classList.add("bg-red-50", "border-red-400", "text-red-700");
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.classList.remove("bg-red-50", "border-red-400", "text-red-700");
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      e.currentTarget.classList.remove("bg-red-50", "border-red-400", "text-red-700");
+                      const draggedUid = e.dataTransfer.getData("text/plain");
+                      if (draggedUid) {
+                        try {
+                          await updateDoc(doc(db, 'users', draggedUid), {
+                            parentUid: null,
+                            updatedAt: new Date().toISOString()
+                          });
+                          showToast(`Successfully unassigned reports relationship for ${getUserNameById(draggedUid)}`);
+                        } catch (err) {
+                          console.error(err);
+                          showToast("Failed to reset supervisor", "error");
+                        }
+                      }
+                    }}
+                    className="p-8 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 transition-all text-center flex flex-col items-center justify-center gap-3 min-h-[140px] bg-slate-50/20 group hover:border-red-300"
+                  >
+                    <Trash2 className="w-6 h-6 shrink-0 transition-transform group-hover:scale-110" />
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest block">Clear Reports key</span>
+                      <span className="text-[9px] font-bold block leading-normal mt-0.5">Drag any node here to clear their reporting supervisor</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Highly Responsive visual canvas board container */}
+                <div className="lg:col-span-3 bg-slate-50 border border-slate-150 rounded-[2.5rem] shadow-inner p-8 overflow-x-auto min-h-[600px] flex items-center justify-center relative">
+                  {/* Visual legend details */}
+                  <div className="absolute top-4 left-4 bg-white/90 backdrop-blur border border-slate-200 px-3 py-2 rounded-xl text-[9px] font-bold text-slate-500 uppercase flex flex-col gap-1 shadow-sm z-20">
+                    <span className="font-extrabold text-slate-850">Visual Chart Guide:</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block border border-blue-600"></span>
+                      <span>Directors (Roots)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block border border-emerald-600"></span>
+                      <span>Managers</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block border border-amber-600"></span>
+                      <span>Site Foremen</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block border border-indigo-600"></span>
+                      <span>Workers</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col md:flex-row items-start justify-center gap-24 py-12 min-w-max">
+                    {visualRoots.map(root => (
+                      <VisualTreeViewNode 
+                        key={root.uid}
+                        node={root}
+                        users={users}
+                        depth={0}
+                        onDropOnNode={handleAssignSupervisorDragDrop}
+                        onClearSupervisor={handleClearSupervisorDirect}
+                        getUserNameById={getUserNameById}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* VIEW D: HR DOCKET & USER PROFILE MODIFICATIONS */}
+      {activeTab === 'hr' && canAccessHR && (
+        <div className="space-y-8">
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search staff, worker, or active manager..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-sm font-bold placeholder-slate-400"
+              />
+            </div>
+            <div className="text-slate-400 font-black text-[10px] uppercase tracking-wider">
+              Total Personnel: {users.length}
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {users.filter(u => {
+              const term = searchQuery.toLowerCase();
+              return (u.displayName || '').toLowerCase().includes(term) || u.email.toLowerCase().includes(term) || u.role.toLowerCase().includes(term);
+            }).map((usr) => (
+              <div 
+                key={usr.uid} 
+                className="bg-white rounded-3xl border border-slate-100 p-6 flex flex-col justify-between transition-all hover:scale-102 hover:shadow-lg hover:border-blue-100 relative group"
+              >
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 text-white font-black flex items-center justify-center text-sm shadow-sm">
+                        {usr.displayName ? usr.displayName.substring(0,2).toUpperCase() : usr.email.substring(0,2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-slate-900 tracking-tight text-sm uppercase">{usr.displayName || 'Unnamed User'}</h4>
+                        <p className="text-xs text-slate-400 font-bold font-mono truncate max-w-[160px]">{usr.email}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                        usr.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                      }`}>
+                        {usr.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-50 pt-4 grid grid-cols-2 gap-y-4 gap-x-2 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    <div>
+                      <span>Assigned Role</span>
+                      <p className="text-xs font-bold text-slate-700 capitalize mt-1 text-sm text-blue-600">{usr.role}</p>
+                    </div>
+                    <div>
+                      <span>Salary / Allowance</span>
+                      <p className="text-xs font-bold text-slate-700 mt-1 text-sm">৳{usr.salary ? Number(usr.salary).toLocaleString() : 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span>Supervisor</span>
+                      <p className="text-xs font-bold text-slate-700 mt-1 truncate">{usr.parentUid ? getUserNameById(usr.parentUid) : 'None'}</p>
+                    </div>
+                    <div>
+                      <span>Join Date</span>
+                      <p className="text-xs font-bold text-slate-700 mt-1">{usr.joinDate || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-slate-50 flex gap-2">
+                  <button
+                    onClick={() => handleSelectUserForHR(usr)}
+                    className="flex-1 py-3 bg-slate-900 hover:bg-black text-[10px] font-black tracking-wider uppercase text-white rounded-xl transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Manage HR Profile
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* HR MODAL EDIT DIALOG */}
+      <AnimatePresence>
+        {selectedUserForHR && (
+          <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-slate-950 uppercase tracking-tight">HR Staff Dossier</h3>
+                  <p className="text-xs text-slate-400">Review employee roles, salaries, and supervisor codes</p>
+                </div>
+                <button 
+                  onClick={() => setSelectedUserForHR(null)} 
+                  className="p-2 hover:bg-slate-100 rounded-full transition-all"
+                >
+                  <X className="w-6 h-6 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="w-12 h-12 bg-slate-900 rounded-xl text-white font-black flex items-center justify-center text-sm">
+                  {selectedUserForHR.displayName ? selectedUserForHR.displayName.substring(0,2).toUpperCase() : selectedUserForHR.email.substring(0,2).toUpperCase()}
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm text-slate-900 uppercase">{selectedUserForHR.displayName || 'Unnamed staff'}</h4>
+                  <p className="text-xs text-slate-500 font-bold font-mono truncate max-w-[200px]">{selectedUserForHR.email}</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveHRDossier} className="space-y-4">
+                {/* ROLE CONTROLLER WITH SELECT OR CREATOR OPTION */}
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider">Employee Role Position</label>
+                  
+                  <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setIsTypingCustomRole(false)}
+                      className={cn(
+                        "flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all",
+                        !isTypingCustomRole ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                      )}
+                    >
+                      Select Role
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsTypingCustomRole(true)}
+                      className={cn(
+                        "flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all",
+                        isTypingCustomRole ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                      )}
+                    >
+                      Type Brand New Role
+                    </button>
+                  </div>
+
+                  {!isTypingCustomRole ? (
+                    <select
+                      value={selectedUserForHR.role}
+                      onChange={(e) => setSelectedUserForHR({ ...selectedUserForHR, role: e.target.value })}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
+                    >
+                      <option value="owner">Owner</option>
+                      <option value="admin">Admin</option>
+                      <option value="manager">Manager</option>
+                      <option value="worker">Worker</option>
+                      <option value="shop_owner">Shop Owner</option>
+                      <option value="worker_foreman">Worker Foreman</option>
+                      <option value="manager_foreman">Manager Foreman</option>
+                      <option value="delivery_manager">Delivery Manager</option>
+                      <option value="field_manager">Field Manager</option>
+                      <option value="foreman">Foreman</option>
+                      <option value="delivery_man">Delivery Man</option>
+                      {/* Populate custom roles typed by user previously */}
+                      {customRoles.map((custRole) => (
+                        <option key={custRole} value={custRole}>{custRole}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="space-y-1">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Write dynamic role name (e.g. Lead Color Analyst)"
+                        value={typedRoleName}
+                        onChange={(e) => setTypedRoleName(e.target.value)}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
+                      />
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1 px-1">
+                        *This brand new role will be saved into selectable roles for future use
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2">Employee Base Salary (৳)</label>
+                  <input
+                    type="number"
+                    placeholder="e.g. 25000"
+                    value={hrForm.salary}
+                    onChange={(e) => setHrForm({ ...hrForm, salary: e.target.value })}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2">Join Date</label>
+                  <input
+                    type="date"
+                    value={hrForm.joinDate}
+                    onChange={(e) => setHrForm({ ...hrForm, joinDate: e.target.value })}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2">Performance Rating (1-10)</label>
+                  <select
+                    value={hrForm.rating}
+                    onChange={(e) => setHrForm({ ...hrForm, rating: e.target.value })}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
+                  >
+                    {['10','9','8','7','6','5','4','3','2','1'].map(v => (
+                      <option key={v} value={v}>{v} / 10</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2">Reporting Supervisor (Higher Key)</label>
+                  <select
+                    value={hrForm.supervisorUid}
+                    onChange={(e) => setHrForm({ ...hrForm, supervisorUid: e.target.value })}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
+                  >
+                    <option value="">-- No Direct Supervisor Assigned --</option>
+                    {users.filter(u => u.uid !== selectedUserForHR.uid).map(u => (
+                      <option key={u.uid} value={u.uid}>{u.displayName || u.email} ({u.role})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex gap-2 pt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-slate-900 hover:bg-black font-black uppercase text-[10px] tracking-widest text-white rounded-xl transition-all"
+                  >
+                    Save Dossier
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUserForHR(null)}
+                    className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs uppercase"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -8982,6 +11068,8 @@ function AppRoutes() {
               {hasPermission('MANAGE_USERS') && (
                 <Route path="/users" element={<UserManagement />} />
               )}
+
+              <Route path="/org-panel" element={<OrganizationPanel />} />
 
               {hasPermission('VIEW_ACTIVITY_LOG') && (
                 <Route path="/activity" element={<ActivityLog />} />
